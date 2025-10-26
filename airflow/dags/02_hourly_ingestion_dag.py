@@ -2,33 +2,33 @@
 Hourly Ingestion DAG for Weather Observations and Forecasting System
 
 This DAG handles the regular hourly data ingestion operations:
-1. WMO station metadata ingestion
-2. Weather forecast data ingestion
-3. Weather observation data ingestion
-4. dbt model execution (downstream)
+1. Weather forecast data ingestion
+2. Weather observation data ingestion
+3. dbt model execution (downstream)
 
 This DAG runs hourly at the 1st minute of each hour.
 """
 
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.sensors.time_sensor import TimeSensor
 import sys
-import os
+from datetime import datetime, timedelta
+
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+from airflow.sensors.time_sensor import TimeSensor
+from airflow.utils.task_group import TaskGroup
+
+from airflow import DAG
 
 # Add the project root to Python path
 sys.path.append('/opt/airflow/project')
 
 # Import project modules
-from utils.config import DEFAULT_COUNTRY, WMO_STATIONS_URL, DEFAULT_PLZ3_PREFIX
+from utils.config import DEFAULT_STATION
 from utils.logger import logger
 from utils.weather_utils import get_station_ids_for_scope
-from src.ingest.station_ingest import ingest_wmo_stations
 from src.ingest.weather_forecast_ingest import ingest_forecast_weather
 from src.ingest.weather_observation_ingest import ingest_observed_weather
-from src.pipelines.spatial_linking import create_spatial_linking_table
+
 
 # Default arguments for the DAG
 default_args = {
@@ -39,7 +39,7 @@ default_args = {
     'email_on_retry': False,
     'retries': 2,
     'retry_delay': timedelta(minutes=5),
-    'catchup': False,
+    'catchup': True,
 }
 
 # Create the DAG
@@ -52,24 +52,13 @@ dag = DAG(
     tags=['weather', 'ingestion', 'hourly', 'dbt'],
 )
 
-def ingest_station_metadata():
-    """Ingest WMO station metadata from the API."""
-    logger.info("Ingesting WMO station metadata...")
-    try:
-        ingest_wmo_stations(WMO_STATIONS_URL)
-        logger.info("Station metadata ingestion completed successfully")
-        return "Station metadata ingestion completed"
-    except Exception as e:
-        logger.error(f"Failed to ingest station metadata: {e}")
-        raise
 
 def get_station_scope():
     """Get station IDs for the configured scope (postal areas and country)."""
     logger.info("Getting station IDs for scope...")
     try:
         station_ids = get_station_ids_for_scope(
-            plz3_prefix=DEFAULT_PLZ3_PREFIX, 
-            country=DEFAULT_COUNTRY
+            station_name=DEFAULT_STATION
         )
         if not station_ids:
             logger.warning("No stations found for scope")
@@ -80,20 +69,8 @@ def get_station_scope():
         logger.error(f"Failed to get station scope: {e}")
         raise
 
-def create_spatial_links():
-    """Create spatial linking table between postal codes and weather stations."""
-    logger.info("Creating spatial linking table...")
-    try:
-        if not create_spatial_linking_table():
-            raise Exception("Spatial linking table creation failed")
-        logger.info("Spatial linking table created successfully")
-        return "Spatial linking completed"
-    except Exception as e:
-        logger.error(f"Failed to create spatial linking table: {e}")
-        raise
-
-def ingest_forecast_data(**context):
-    """Ingest weather forecast data for the given station IDs."""
+def ingest_forecast_data_raw(**context):
+    """Ingest weather forecast raw data for the given station IDs."""
     station_ids = context['task_instance'].xcom_pull(task_ids='get_station_scope')
     if not station_ids:
         logger.warning("No station IDs found, skipping forecast ingestion")
@@ -108,8 +85,8 @@ def ingest_forecast_data(**context):
         logger.error(f"Failed to ingest forecast data: {e}")
         raise
 
-def ingest_observed_data(**context):
-    """Ingest weather observation data for the given station IDs."""
+def ingest_observed_data_raw(**context):
+    """Ingest weather observation raw data for the given station IDs."""
     station_ids = context['task_instance'].xcom_pull(task_ids='get_station_scope')
     if not station_ids:
         logger.warning("No station IDs found, skipping observed data ingestion")
@@ -124,37 +101,112 @@ def ingest_observed_data(**context):
         logger.error(f"Failed to ingest observed data: {e}")
         raise
 
-def run_dbt_models():
-    """Run dbt models to process the ingested data."""
-    logger.info("Running dbt models...")
+def run_dbt_staging_models():
+    """Run dbt staging models to process raw data."""
+    logger.info("Running dbt staging models...")
     try:
-        # Change to project directory and run dbt
-        os.chdir('/opt/airflow/project')
-        
-        # Run dbt deps and dbt run
         import subprocess
+        
         result = subprocess.run(
-            ['dbt', 'deps'], 
+            ['dbt', 'run', '--models', 'staging'],
             capture_output=True, 
             text=True, 
             cwd='/opt/airflow/project'
         )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt staging stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt staging stderr: {result.stderr}")
+            
         if result.returncode != 0:
-            raise Exception(f"dbt deps failed: {result.stderr}")
+            raise Exception(f"dbt staging models failed: {result.stderr}")
         
-        result = subprocess.run(
-            ['dbt', 'run'], 
-            capture_output=True, 
-            text=True, 
-            cwd='/opt/airflow/project'
-        )
-        if result.returncode != 0:
-            raise Exception(f"dbt run failed: {result.stderr}")
-        
-        logger.info("dbt models executed successfully")
-        return "dbt models completed"
+        logger.info("dbt staging models executed successfully")
+        return "dbt staging models completed"
     except Exception as e:
-        logger.error(f"Failed to run dbt models: {e}")
+        logger.error(f"Failed to run dbt staging models: {e}")
+        raise
+
+def run_dbt_dimension_models():
+    """Run dbt dimension models."""
+    logger.info("Running dbt dimension models...")
+    try:
+        import subprocess
+        
+        result = subprocess.run(
+            ['dbt', 'run', '--models', 'dimensions'],
+            capture_output=True, 
+            text=True, 
+            cwd='/opt/airflow/project'
+        )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt dimensions stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt dimensions stderr: {result.stderr}")
+            
+        if result.returncode != 0:
+            raise Exception(f"dbt dimension models failed: {result.stderr}")
+        
+        logger.info("dbt dimension models executed successfully")
+        return "dbt dimension models completed"
+    except Exception as e:
+        logger.error(f"Failed to run dbt dimension models: {e}")
+        raise
+
+def run_dbt_fact_models():
+    """Run dbt fact models."""
+    logger.info("Running dbt fact models...")
+    try:
+        import subprocess
+        
+        result = subprocess.run(
+            ['dbt', 'run', '--models', 'facts'],
+            capture_output=True, 
+            text=True, 
+            cwd='/opt/airflow/project'
+        )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt facts stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt facts stderr: {result.stderr}")
+            
+        if result.returncode != 0:
+            raise Exception(f"dbt fact models failed: {result.stderr}")
+        
+        logger.info("dbt fact models executed successfully")
+        return "dbt fact models completed"
+    except Exception as e:
+        logger.error(f"Failed to run dbt fact models: {e}")
+        raise
+
+def run_dbt_mart_models():
+    """Run dbt mart models."""
+    logger.info("Running dbt mart models...")
+    try:
+        import subprocess
+        
+        result = subprocess.run(
+            ['dbt', 'run', '--models', 'marts'],
+            capture_output=True, 
+            text=True, 
+            cwd='/opt/airflow/project'
+        )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt marts stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt marts stderr: {result.stderr}")
+            
+        if result.returncode != 0:
+            raise Exception(f"dbt mart models failed: {result.stderr}")
+        
+        logger.info("dbt mart models executed successfully")
+        return "dbt mart models completed"
+    except Exception as e:
+        logger.error(f"Failed to run dbt mart models: {e}")
         raise
 
 def run_dbt_tests():
@@ -162,12 +214,19 @@ def run_dbt_tests():
     logger.info("Running dbt tests...")
     try:
         import subprocess
+        
         result = subprocess.run(
-            ['dbt', 'test'], 
+            ['dbt', 'test'],
             capture_output=True, 
             text=True, 
             cwd='/opt/airflow/project'
         )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt tests stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt tests stderr: {result.stderr}")
+            
         if result.returncode != 0:
             logger.warning(f"dbt tests failed: {result.stderr}")
             # Don't fail the DAG for test failures, just log them
@@ -180,41 +239,51 @@ def run_dbt_tests():
         return "dbt tests failed but continuing"
 
 # Define tasks
-task_ingest_stations = PythonOperator(
-    task_id='ingest_station_metadata',
-    python_callable=ingest_station_metadata,
-    dag=dag,
-)
-
 task_get_scope = PythonOperator(
     task_id='get_station_scope',
     python_callable=get_station_scope,
     dag=dag,
 )
 
-task_create_spatial_links = PythonOperator(
-    task_id='create_spatial_links',
-    python_callable=create_spatial_links,
+task_ingest_forecast_raw = PythonOperator(
+    task_id='ingest_forecast_data_raw',
+    python_callable=ingest_forecast_data_raw,
     dag=dag,
 )
 
-task_ingest_forecast = PythonOperator(
-    task_id='ingest_forecast_data',
-    python_callable=ingest_forecast_data,
+task_ingest_observed_raw = PythonOperator(
+    task_id='ingest_observed_data_raw',
+    python_callable=ingest_observed_data_raw,
     dag=dag,
 )
 
-task_ingest_observed = PythonOperator(
-    task_id='ingest_observed_data',
-    python_callable=ingest_observed_data,
-    dag=dag,
-)
+# Create task group for staging layer
+with TaskGroup("staging_layer", dag=dag) as staging_group:
+    task_run_dbt_staging = PythonOperator(
+        task_id='run_dbt_staging_models',
+        python_callable=run_dbt_staging_models,
+    )
 
-task_run_dbt = PythonOperator(
-    task_id='run_dbt_models',
-    python_callable=run_dbt_models,
-    dag=dag,
-)
+# Create task group for dimension layer
+with TaskGroup("dimension_layer", dag=dag) as dimension_group:
+    task_run_dbt_dimensions = PythonOperator(
+        task_id='run_dbt_dimension_models',
+        python_callable=run_dbt_dimension_models,
+    )
+
+# Create task group for fact layer
+with TaskGroup("fact_layer", dag=dag) as fact_group:
+    task_run_dbt_facts = PythonOperator(
+        task_id='run_dbt_fact_models',
+        python_callable=run_dbt_fact_models,
+    )
+
+# Create task group for mart layer
+with TaskGroup("mart_layer", dag=dag) as mart_group:
+    task_run_dbt_marts = PythonOperator(
+        task_id='run_dbt_mart_models',
+        python_callable=run_dbt_mart_models,
+    )
 
 task_run_dbt_tests = PythonOperator(
     task_id='run_dbt_tests',
@@ -223,8 +292,9 @@ task_run_dbt_tests = PythonOperator(
 )
 
 # Define task dependencies
-task_ingest_stations >> task_create_spatial_links
-task_create_spatial_links >> task_get_scope
-task_get_scope >> [task_ingest_forecast, task_ingest_observed]
-[task_ingest_forecast, task_ingest_observed] >> task_run_dbt
-task_run_dbt >> task_run_dbt_tests
+task_get_scope >> [task_ingest_forecast_raw, task_ingest_observed_raw]
+[task_ingest_forecast_raw, task_ingest_observed_raw] >> staging_group
+staging_group >> dimension_group
+dimension_group >> fact_group
+fact_group >> mart_group
+mart_group >> task_run_dbt_tests

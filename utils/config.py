@@ -27,7 +27,7 @@ def get_database_url():
 BRIGHTSKY_BASE = os.getenv("BRIGHTSKY_BASE", "https://api.brightsky.dev")
 
 # Ingestion scope defaults
-DEFAULT_COUNTRY = os.getenv("DEFAULT_COUNTRY", "Germany")
+DEFAULT_STATION = os.getenv("DEFAULT_STATION", "berlin")
 DEFAULT_PLZ3_PREFIX = os.getenv("DEFAULT_PLZ3_PREFIX", '10') # For Berlin
 DEFAULT_IS_SCOPE_PLZ3 = os.getenv("DEFAULT_IS_SCOPE_PLZ3", None)  # e.g., True
 

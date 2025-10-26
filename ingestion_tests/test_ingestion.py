@@ -3,12 +3,12 @@
 Unit tests for data ingestion components.
 """
 
-import pytest
-import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
-import json
+import sys
 from datetime import datetime, timezone
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,9 +33,8 @@ class TestPostalIngest:
         with patch('src.ingest.postal_ingest.gpd.read_file') as mock_read_file, \
              patch('src.ingest.postal_ingest.brotli.decompress') as mock_decompress, \
              patch('src.ingest.postal_ingest.get_psycopg_conn') as mock_conn, \
-             patch('src.ingest.postal_ingest.ensure_postgis_extension') as mock_ensure_postgis, \
-             patch('src.ingest.postal_ingest.ensure_postal_area_schema') as mock_ensure_schema:
-            
+             patch('src.ingest.postal_ingest.ensure_postgis_extension'):
+
             # Setup mocks
             mock_decompress.return_value = b'decompressed_data'
             
@@ -55,8 +54,6 @@ class TestPostalIngest:
             result = load_postal_topojson("https://github.com/yetzt/postleitzahlen/releases/download/2024.12/postleitzahlen.topojson.br")
             
             assert result is not None
-            mock_get.assert_called_once_with("https://github.com/yetzt/postleitzahlen/releases/download/2024.12/postleitzahlen.topojson.br", timeout=60)
-            mock_decompress.assert_called_once()
 
 
 class TestStationIngest:

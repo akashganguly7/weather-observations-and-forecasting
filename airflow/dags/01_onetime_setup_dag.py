@@ -3,8 +3,9 @@ One-time Setup DAG for Weather Observations and Forecasting System
 
 This DAG handles the initial setup operations that need to be run once:
 1. Database schema creation
-2. Postal data ingestion
-3. Spatial linking table creation
+2. Station metadata ingestion
+3. Postal data ingestion
+4. Spatial linking table creation
 
 This DAG should be run manually after initial deployment.
 """
@@ -20,10 +21,11 @@ import os
 sys.path.append('/opt/airflow/project')
 
 # Import project modules
-from utils.config import DEFAULT_COUNTRY, POSTAL_TOPO_URL, DEFAULT_PLZ3_PREFIX
-from utils.db import ensure_postgis_extension, ensure_postal_area_schema
+from utils.config import POSTAL_TOPO_URL, DEFAULT_PLZ3_PREFIX, WMO_STATIONS_URL
+from utils.db import ensure_postgis_extension, ensure_schema
 from utils.logger import logger
 from src.ingest.postal_ingest import load_postal_topojson
+from src.ingest.station_ingest import ingest_wmo_stations
 
 # Default arguments for the DAG
 default_args = {
@@ -52,18 +54,29 @@ def ensure_database_schema():
     logger.info("Creating database schema...")
     try:
         ensure_postgis_extension()
-        ensure_postal_area_schema()
+        ensure_schema()
         logger.info("Database schema created successfully")
         return "Schema creation completed"
     except Exception as e:
         logger.error(f"Failed to create database schema: {e}")
         raise
 
+def ingest_station_metadata():
+    """Ingest WMO station metadata from the API."""
+    logger.info("Ingesting WMO station metadata...")
+    try:
+        ingest_wmo_stations(WMO_STATIONS_URL)
+        logger.info("Station metadata ingestion completed successfully")
+        return "Station metadata ingestion completed"
+    except Exception as e:
+        logger.error(f"Failed to ingest station metadata: {e}")
+        raise
+
 def ingest_postal_data():
     """Load postal area data from TopoJSON."""
     logger.info("Loading postal area data...")
     try:
-        load_postal_topojson(POSTAL_TOPO_URL, plz3_prefix=DEFAULT_PLZ3_PREFIX)
+        load_postal_topojson(POSTAL_TOPO_URL)
         logger.info("Postal data ingestion completed successfully")
         return "Postal data ingestion completed"
     except Exception as e:
@@ -78,6 +91,12 @@ task_ensure_schema = PythonOperator(
     dag=dag,
 )
 
+task_ingest_stations = PythonOperator(
+    task_id='ingest_station_metadata',
+    python_callable=ingest_station_metadata,
+    dag=dag,
+)
+
 task_ingest_postal = PythonOperator(
     task_id='ingest_postal_data',
     python_callable=ingest_postal_data,
@@ -85,4 +104,4 @@ task_ingest_postal = PythonOperator(
 )
 
 # Define task dependencies
-task_ensure_schema >> task_ingest_postal
+task_ensure_schema >> task_ingest_stations >> task_ingest_postal

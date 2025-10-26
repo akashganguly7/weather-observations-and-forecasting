@@ -1,521 +1,654 @@
 # Weather Observations and Forecasting System
 
-A comprehensive weather data ingestion and processing system that collects, stores, and processes weather observations and forecasts from multiple sources, with spatial aggregation capabilities for postal code areas.
+## 1. Introduction
 
-## 🚀 Quick Start
+This project is a comprehensive weather data ingestion and processing system that collects, stores, and processes weather observations and forecasts from multiple sources. The system implements a modern data warehouse architecture with spatial aggregation capabilities for postal code areas.
 
-**For new users**: See [README_SETUP.md](README_SETUP.md) for a complete setup guide.
+### Key Features
+- **Fresh Weather Data**: Ingests hourly weather observations and forecasts from the BrightSky API
+- **Spatial Processing**: Links weather stations to German postal code areas using PostGIS
+- **Data Quality**: Implements comprehensive validation, outlier detection, and confidence scoring
+- **Modern Architecture**: Follows medallion architecture (Bronze, Silver, Gold layers) with dbt transformations
+- **Orchestration**: Uses Apache Airflow for workflow management and scheduling
+- **Scalable Design**: Built with Docker containers for easy deployment and scaling
 
-**One-command setup**:
-```bash
-./setup.sh
+### Business Value
+- Provides weather data at postal code level for location-based services
+- Enables weather pattern analysis and forecasting capabilities
+- Supports data-driven decision making for weather-dependent businesses
+- Offers clean, validated data ready for Machine Learning applications
+
+## 2. How to Run
+
+### Prerequisites
+- Docker and Docker Compose installed
+- Make utility (available on most Unix-like systems)
+- At least 4GB RAM and 10GB disk space
+
+### Quick Start
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd weather-observations-and-forecasting
+   ```
+
+2. **Start the system**
+   ```bash
+   make start
+   ```
+   This command automatically runs the startup process twice with proper timing to ensure all services initialize correctly.
+
+3. **Access the system**
+   - **Airflow Web UI**: http://localhost:8080 (username: `admin`, password: `admin`)
+   - **PostgreSQL Database**: localhost:5432 (database: `weatherdb`)
+   - If you wish to connect to Postgres via CLI, run: `docker exec -it weather_postgis psql -U postgres -d weatherdb`
+
+4. **Run the data pipeline**
+   - In Airflow UI, find and trigger the `weather_onetime_setup` DAG first
+   - The `weather_hourly_ingestion` DAG will run automatically every hour
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `make start` | Start the complete system (runs twice for proper initialization) |
+| `make stop` | Stop all services |
+| `make status` | Show service status |
+| `make logs` | View service logs |
+| `make clean` | Clean up everything for fresh start |
+
+### First Run Notes
+- The first DAG run may take several minutes as it downloads German postal area data (~12MB)
+- This is a one-time operation - subsequent runs will be much faster
+- The system automatically handles initialization and service dependencies
+
+## 3. Data Flow
+
+The system follows a modern data warehouse architecture with clear separation of concerns across multiple layers:
+
+### Architecture Overview
+
+```mermaid
+graph LR
+    %% External Sources (Bronze)
+    subgraph "🌐 SOURCES"
+        A[BrightSky API]
+        E[TopoJSON Source]
+    end
+    
+    %% Raw Layer (Bronze)
+    subgraph "🥉 RAW LAYER (Bronze)"
+        B[weather_hourly_observed_raw]
+        C[weather_hourly_forecast_raw]
+        D[station_raw]
+        F[postal_area_raw]
+    end
+    
+    %% Staging Layer (Silver)
+    subgraph "🥈 STAGING LAYER (Silver)"
+        G[stg_weather_observed_hourly]
+        H[stg_weather_forecast_hourly]
+        I[stg_dim_station]
+        J[stg_dim_postal_area]
+    end
+    
+    %% Dimensions Layer (Gold)
+    subgraph "🥇 DIMENSIONS LAYER (Gold)"
+        K[dim_station]
+        L[dim_postal_area]
+    end
+    
+    %% Facts Layer (Gold)
+    subgraph "🥇 FACTS LAYER (Gold)"
+        M[fact_link_postcode_station]
+        N[fact_weather_observed_hourly]
+        O[fact_weather_forecast_hourly]
+    end
+    
+    %% Marts Layer (Gold)
+    subgraph "🥇 MARTS LAYER (Gold)"
+        P[mart_weather_forecast_hourly_aggregated]
+        Q[mart_weather_observed_hourly_aggregated]
+    end
+    
+    %% Flow connections
+    A --> B
+    A --> C
+    A --> D
+    E --> F
+    
+    B --> G
+    C --> H
+    D --> I
+    F --> J
+    
+    I --> K
+    J --> L
+    
+    K --> M
+    L --> M
+    
+    G --> N
+    H --> O
+    K --> N
+    K --> O
+    L --> N
+    L --> O
+    M --> N
+    M --> O
+    
+    O --> P
+    N --> Q
 ```
 
-**Access Airflow**: http://localhost:8080 (admin/admin)
+### Data Processing Pipeline
 
-## Overview
+1. **Ingestion (Bronze Layer)**
+   - Raw weather data from BrightSky API
+   - German postal area boundaries from TopoJSON
+   - Data stored as-is with minimal processing
 
-This system ingests weather data from the BrightSky API, processes it through data quality checks, and stores it in a PostgreSQL database with PostGIS spatial extensions. The system supports both historical observations and weather forecasts, with spatial relationships between weather stations and postal code areas.
+2. **Staging (Silver Layer)**
+   - Data cleaning and standardization
+   - Outlier detection and confidence scoring
+   - Geometry creation for spatial data
+   - Deduplication by business keys
 
-**🎯 Quick Start**: Use the included Makefile for easy project management - run `make help` to see all available commands!
+3. **Dimensions (Gold Layer) - Currently in SCD Type 1**
+   - Master reference data for stations and postal areas
+   - Surrogate key generation
+   - Proper indexing for performance
 
-## Database Schema
+4. **Facts (Gold Layer) - Currently in SCD Type 1**
+   - Spatial linking between postal areas and stations
+   - Weather data enriched with dimension attributes
+   - PostGIS distance calculations
 
-### Entity Relationship Diagram
+5. **Marts (Gold Layer) - Currently in SCD Type 1**
+   - Postal code level aggregations
+   - Statistical summaries and data quality metrics
+   - Business-ready datasets
+
+### Implementation Summary
+
+The system processes weather data through a comprehensive pipeline starting with API ingestion into the raw layer where data is stored as-is. The staging layer (curation layer) performs deduplication and data cleaning, including outlier detection for all weather properties. Outliers are replaced with null values and flagged for easy data quality filtering. The implementation focuses on Berlin weather stations to maintain manageable data volumes and fast pipeline execution. The data is modeled using a star schema with fact tables containing all required information, including both foreign keys and business keys to support both ML and analytical use cases. Finally, the data is aggregated by postal code on an hourly basis with pre-computed statistical summaries (min, max, avg) for all weather attributes to optimize ML workflow performance.
+
+### Orchestration
+- **Apache Airflow**: Manages the entire data pipeline
+- **Scheduling**: Automatic hourly execution at the 1st minute of each hour
+- **Monitoring**: Web UI for task monitoring and error handling
+- **Dependencies**: Proper task dependencies and parallel execution
+
+## 4. ER Diagram
+
+The system implements a comprehensive data model with clear relationships between weather data, stations, and postal areas:
 
 ```mermaid
 erDiagram
+    %% External API Sources
+    BrightSkyAPI {
+        string api_name "BrightSky Weather API"
+        string base_url "https://api.brightsky.dev"
+        string data_types "observations, forecasts, stations"
+    }
+    
+    TopoJSONSource {
+        string source_name "German Postal Areas"
+        string format "TopoJSON"
+        string url "https://raw.githubusercontent.com/..."
+    }
+    
+    %% Raw Data Layer (Bronze)
+    weather_hourly_observed_raw {
+        varchar wmo_station_id
+        timestamp timestamp_utc
+        jsonb raw "Complete API response"
+        jsonb bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
+    }
+    
+    weather_hourly_forecast_raw {
+        varchar wmo_station_id
+        timestamp timestamp_utc
+        jsonb raw "Complete API response"
+        jsonb bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
+    }
+    
+    station_raw {
+        serial id PK
+        varchar wmo_station_id
+        text station_name
+        double_precision lat
+        double_precision lon
+        jsonb properties
+        text record_source
+        timestamp load_dts
+    }
+    
+    postal_area_raw {
+        serial id PK
+        varchar plz
+        text wkt
+        geometry geometry
+        jsonb properties
+        text record_source
+        timestamp load_dts
+    }
+    
+    %% Staging Layer (Silver) - dbt Models
+    stg_dim_postal_area {
+        varchar plz PK
+        text wkt
+        geometry geometry
+        timestamp load_dts
+    }
+    
+    stg_dim_station {
+        serial id PK
+        text station_name
+        varchar wmo_station_id UK
+        double_precision lat
+        double_precision lon
+        geometry geometry
+        jsonb properties
+        text record_source
+        timestamp load_dts
+    }
+    
+    stg_weather_observed_hourly {
+        varchar wmo_station_id
+        timestamp timestamp_utc
+        double_precision temperature
+        double_precision precipitation
+        double_precision wind_speed
+        double_precision wind_direction
+        double_precision pressure_msl
+        double_precision relative_humidity
+        double_precision cloud_cover
+        double_precision visibility
+        double_precision dew_point
+        double_precision solar
+        double_precision sunshine
+        double_precision wind_gust_speed
+        double_precision wind_gust_direction
+        double_precision precipitation_probability
+        double_precision precipitation_probability_6h
+        text weather_condition
+        text weather_icon
+        boolean outlier_flag
+        double_precision confidence_score
+        text bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
+    }
+    
+    stg_weather_forecast_hourly {
+        varchar wmo_station_id
+        timestamp timestamp_utc
+        double_precision temperature
+        double_precision precipitation
+        double_precision wind_speed
+        double_precision wind_direction
+        double_precision pressure_msl
+        double_precision relative_humidity
+        double_precision cloud_cover
+        double_precision visibility
+        double_precision dew_point
+        double_precision solar
+        double_precision sunshine
+        double_precision wind_gust_speed
+        double_precision wind_gust_direction
+        double_precision precipitation_probability
+        double_precision precipitation_probability_6h
+        text weather_condition
+        text weather_icon
+        boolean outlier_flag
+        double_precision confidence_score
+        text bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
+    }
+    
+    %% Dimension Layer (Gold) - dbt Models
     dim_postal_area {
-        plz varchar PK
-        wkt text
+        serial id PK
+        varchar plz UK
+        text wkt
         geometry geometry
     }
     
     dim_station {
-        id serial PK
-        station_name text
-        wmo_station_id varchar UK
-        lat double_precision
-        lon double_precision
+        serial id PK
+        text station_name
+        varchar wmo_station_id UK
+        double_precision lat
+        double_precision lon
         geometry geometry
-        properties jsonb
-        record_source text
-        load_dts timestamp
+        jsonb properties
+        text record_source
+        timestamp load_dts
     }
     
-    link_postcode_station {
-        plz varchar PK,FK
-        station_id integer PK,FK
+    %% Fact Layer (Gold) - dbt Models
+    fact_link_postcode_station {
+        integer postal_area_id PK,FK
+        integer station_id PK,FK
+        timestamp created_at
     }
     
-    weather_hourly_observed_raw {
-        wmo_station_id varchar
-        timestamp_utc timestamp
-        temperature double_precision
-        precipitation double_precision
-        wind_speed double_precision
-        wind_dir double_precision
-        raw jsonb
-        bright_sky_source_mapping jsonb
-        record_source text
-        load_dts timestamp
+    fact_weather_forecast_hourly {
+        varchar wmo_station_id PK,FK
+        integer station_id PK,FK
+        varchar plz PK,FK
+        timestamp timestamp_utc PK
+        double_precision temperature
+        double_precision precipitation
+        double_precision wind_speed
+        double_precision wind_direction
+        double_precision pressure_msl
+        double_precision relative_humidity
+        double_precision cloud_cover
+        double_precision visibility
+        double_precision dew_point
+        double_precision solar
+        double_precision sunshine
+        double_precision wind_gust_speed
+        double_precision wind_gust_direction
+        double_precision precipitation_probability
+        double_precision precipitation_probability_6h
+        text weather_condition
+        text weather_icon
+        boolean outlier_flag
+        double_precision confidence_score
+        text bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
     }
     
-    weather_hourly_forecast_raw {
-        wmo_station_id varchar
-        timestamp_utc timestamp
-        temperature double_precision
-        precipitation double_precision
-        wind_speed double_precision
-        wind_dir double_precision
-        raw jsonb
-        bright_sky_source_mapping jsonb
-        record_source text
-        load_dts timestamp
+    fact_weather_observed_hourly {
+        varchar wmo_station_id PK,FK
+        integer station_id PK,FK
+        varchar plz PK,FK
+        timestamp timestamp_utc PK
+        double_precision temperature
+        double_precision precipitation
+        double_precision wind_speed
+        double_precision wind_direction
+        double_precision pressure_msl
+        double_precision relative_humidity
+        double_precision cloud_cover
+        double_precision visibility
+        double_precision dew_point
+        double_precision solar
+        double_precision sunshine
+        double_precision wind_gust_speed
+        double_precision wind_gust_direction
+        double_precision precipitation_probability
+        double_precision precipitation_probability_6h
+        text weather_condition
+        text weather_icon
+        boolean outlier_flag
+        double_precision confidence_score
+        text bright_sky_source_mapping
+        text record_source
+        timestamp load_dts
     }
     
-    dq_no_data_stations {
-        id serial PK
-        wmo_station_id varchar
-        timestamp_str varchar
-        api_url text
-        http_status integer
-        response_message text
-        created_at timestamp
+    %% Business Mart Layer (Gold) - dbt Models
+    mart_weather_forecast_hourly_aggregated {
+        varchar plz PK
+        timestamp timestamp_utc PK
+        double_precision temperature_avg
+        double_precision temperature_min
+        double_precision temperature_max
+        double_precision temperature_std
+        double_precision precipitation_sum
+        double_precision precipitation_avg
+        double_precision precipitation_max
+        double_precision precipitation_std
+        double_precision wind_speed_avg
+        double_precision wind_speed_max
+        double_precision wind_speed_std
+        double_precision wind_direction_avg
+        double_precision wind_direction_std
+        double_precision pressure_msl_avg
+        double_precision pressure_msl_min
+        double_precision pressure_msl_max
+        double_precision pressure_msl_std
+        double_precision relative_humidity_avg
+        double_precision relative_humidity_min
+        double_precision relative_humidity_max
+        double_precision relative_humidity_std
+        double_precision cloud_cover_avg
+        double_precision cloud_cover_std
+        double_precision visibility_avg
+        double_precision visibility_min
+        double_precision visibility_max
+        double_precision visibility_std
+        double_precision dew_point_avg
+        double_precision dew_point_std
+        double_precision solar_avg
+        double_precision solar_max
+        double_precision solar_std
+        double_precision sunshine_avg
+        double_precision sunshine_max
+        double_precision sunshine_std
+        double_precision wind_gust_speed_avg
+        double_precision wind_gust_speed_max
+        double_precision wind_gust_speed_std
+        double_precision wind_gust_direction_avg
+        double_precision wind_gust_direction_std
+        double_precision precipitation_probability_avg
+        double_precision precipitation_probability_std
+        double_precision precipitation_probability_6h_avg
+        double_precision precipitation_probability_6h_std
+        integer station_count
+        double_precision data_completeness
+        integer outlier_count
+        double_precision confidence_score_avg
+        text weather_condition_mode
+        text weather_icon_mode
+        text record_source
+        timestamp load_dts
     }
     
-    dim_postal_area ||--o{ link_postcode_station : "contains"
-    dim_station ||--o{ link_postcode_station : "serves"
-    dim_station ||--o{ weather_hourly_observed_raw : "generates"
-    dim_station ||--o{ weather_hourly_forecast_raw : "generates"
-    dim_station ||--o{ dq_no_data_stations : "has"
+    mart_weather_observed_hourly_aggregated {
+        varchar plz PK
+        timestamp timestamp_utc PK
+        double_precision temperature_avg
+        double_precision temperature_min
+        double_precision temperature_max
+        double_precision temperature_std
+        double_precision precipitation_sum
+        double_precision precipitation_avg
+        double_precision precipitation_max
+        double_precision precipitation_std
+        double_precision wind_speed_avg
+        double_precision wind_speed_max
+        double_precision wind_speed_std
+        double_precision wind_direction_avg
+        double_precision wind_direction_std
+        double_precision pressure_msl_avg
+        double_precision pressure_msl_min
+        double_precision pressure_msl_max
+        double_precision pressure_msl_std
+        double_precision relative_humidity_avg
+        double_precision relative_humidity_min
+        double_precision relative_humidity_max
+        double_precision relative_humidity_std
+        double_precision cloud_cover_avg
+        double_precision cloud_cover_std
+        double_precision visibility_avg
+        double_precision visibility_min
+        double_precision visibility_max
+        double_precision visibility_std
+        double_precision dew_point_avg
+        double_precision dew_point_std
+        double_precision solar_avg
+        double_precision solar_max
+        double_precision solar_std
+        double_precision sunshine_avg
+        double_precision sunshine_max
+        double_precision sunshine_std
+        double_precision wind_gust_speed_avg
+        double_precision wind_gust_speed_max
+        double_precision wind_gust_speed_std
+        double_precision wind_gust_direction_avg
+        double_precision wind_gust_direction_std
+        double_precision precipitation_probability_avg
+        double_precision precipitation_probability_std
+        double_precision precipitation_probability_6h_avg
+        double_precision precipitation_probability_6h_std
+        integer station_count
+        double_precision data_completeness
+        integer outlier_count
+        double_precision confidence_score_avg
+        text weather_condition_mode
+        text weather_icon_mode
+        text record_source
+        timestamp load_dts
+    }
+    
+    %% API Source Relationships
+    BrightSkyAPI ||--o{ weather_hourly_observed_raw : "provides"
+    BrightSkyAPI ||--o{ weather_hourly_forecast_raw : "provides"
+    BrightSkyAPI ||--o{ station_raw : "provides"
+    TopoJSONSource ||--o{ postal_area_raw : "provides"
+    
+    %% Raw to Staging (dbt Transformations)
+    weather_hourly_observed_raw ||--o{ stg_weather_observed_hourly : "transforms_to"
+    weather_hourly_forecast_raw ||--o{ stg_weather_forecast_hourly : "transforms_to"
+    station_raw ||--o{ stg_dim_station : "transforms_to"
+    postal_area_raw ||--o{ stg_dim_postal_area : "transforms_to"
+    
+    %% Staging to Dimensions (dbt Transformations)
+    stg_dim_postal_area ||--o{ dim_postal_area : "promotes_to"
+    stg_dim_station ||--o{ dim_station : "promotes_to"
+    
+    %% Dimension Relationships
+    dim_postal_area ||--o{ fact_link_postcode_station : "contains"
+    dim_station ||--o{ fact_link_postcode_station : "serves"
+    
+    %% Staging to Facts (dbt Transformations)
+    stg_weather_observed_hourly ||--o{ fact_weather_observed_hourly : "enriches_with_dimensions"
+    stg_weather_forecast_hourly ||--o{ fact_weather_forecast_hourly : "enriches_with_dimensions"
+    dim_station ||--o{ fact_weather_observed_hourly : "provides_station_id"
+    dim_station ||--o{ fact_weather_forecast_hourly : "provides_station_id"
+    fact_link_postcode_station ||--o{ fact_weather_observed_hourly : "provides_spatial_link"
+    fact_link_postcode_station ||--o{ fact_weather_forecast_hourly : "provides_spatial_link"
+    dim_postal_area ||--o{ fact_weather_observed_hourly : "provides_plz"
+    dim_postal_area ||--o{ fact_weather_forecast_hourly : "provides_plz"
+    
+    %% Facts to Marts (dbt Transformations)
+    fact_weather_forecast_hourly ||--o{ mart_weather_forecast_hourly_aggregated : "aggregates_to"
+    fact_weather_observed_hourly ||--o{ mart_weather_observed_hourly_aggregated : "aggregates_to"
 ```
 
-## Table Descriptions
-
-### Dimension Tables
-
-#### `dim_postal_area`
-- **Purpose**: Stores German postal code boundaries as spatial polygons
-- **Key Fields**:
-  - `plz`: Postal code (Primary Key)
-  - `wkt`: Well-Known Text representation of geometry
-  - `geometry`: PostGIS MULTIPOLYGON geometry (SRID 4326)
-- **Indexes**: GIST index on geometry for spatial queries
-
-#### `dim_station`
-- **Purpose**: Weather station metadata and locations
-- **Key Fields**:
-  - `id`: Auto-incrementing primary key
-  - `wmo_station_id`: WMO station identifier (Unique)
-  - `station_name`: Human-readable station name
-  - `lat/lon`: Geographic coordinates
-  - `geometry`: PostGIS POINT geometry (SRID 4326)
-  - `properties`: JSONB field for additional station metadata
-- **Indexes**: GIST index on geometry for spatial operations
-
-### Link Table
-
-#### `link_postcode_station`
-- **Purpose**: Many-to-many relationship between postal codes and weather stations
-- **Key Fields**:
-  - `plz`: Postal code (Foreign Key to dim_postal_area)
-  - `station_id`: Station identifier (Foreign Key to dim_station)
-- **Business Logic**: Created through spatial intersection of station points with postal area polygons
-
-### Fact Tables (Raw Data)
-
-#### `weather_hourly_observed_raw`
-- **Purpose**: Raw historical weather observations from BrightSky API
-- **Key Fields**:
-  - `wmo_station_id`: Station identifier
-  - `timestamp_utc`: Observation timestamp
-  - `temperature`, `precipitation`, `wind_speed`, `wind_dir`: Core weather measurements
-  - `raw`: Complete JSON response from API
-  - `bright_sky_source_mapping`: Source metadata
-- **Indexes**: Composite index on (wmo_station_id, timestamp_utc) and load_dts
-
-#### `weather_hourly_forecast_raw`
-- **Purpose**: Raw weather forecasts from BrightSky API
-- **Key Fields**: Same structure as observed data
-- **Indexes**: Composite index on (wmo_station_id, timestamp_utc) and load_dts
-
-### Data Quality Tables
-
-#### `dq_no_data_stations`
-- **Purpose**: Logs API calls that returned no data (404 errors)
-- **Key Fields**:
-  - `wmo_station_id`: Station identifier
-  - `api_url`: URL that returned no data
-  - `http_status`: HTTP status code
-  - `response_message`: API response details
-
-## System Architecture
-
-### Architecture Philosophy
-This system uses a **functional programming approach** which is ideal for data pipelines because:
-- **Linear workflow**: Clear data flow from ingestion → transformation → aggregation
-- **Stateless operations**: Each function processes data independently
-- **Easy testing**: Functions can be tested in isolation
-- **Simple debugging**: Clear function boundaries and data flow
-- **Maintainable**: Modular design with reusable components
-
-### Data Flow
-1. **Ingestion**: Raw data from BrightSky API → Raw fact tables
-2. **Spatial Processing**: Station locations → Postal code assignments  
-3. **Quality Control**: Data validation → DQ tables for error tracking
-4. **Transformation**: Raw data → Clean, standardized data per postal code
-5. **Aggregation**: Standardized data → ML-ready aggregated data per postal code
-
-### Key Features
-- **Spatial Operations**: PostGIS for geographic calculations
-- **Data Quality**: Comprehensive validation and error logging
-- **Scalability**: Batch processing with concurrent API calls
-- **Audit Trail**: Complete data lineage tracking
-- **Flexibility**: JSONB fields for extensible metadata
-- **Incremental Processing**: Only processes new data for efficiency
-- **Materialized Views**: Pre-computed aggregations for fast queries
-
-## Usage
-
-### Prerequisites
-- PostgreSQL with PostGIS extension
-- Python 3.11+
-- Docker and Docker Compose (for development)
-
-### Quick Start with Makefile (Recommended)
-
-The project includes a comprehensive Makefile for easy management with 30+ commands covering all operations:
-
-```bash
-# Show all available commands
-make help
-
-# Initial setup
-make setup
-
-# Quick start options
-make quick-start      # Start main services
-make quick-airflow    # Start with Airflow orchestration
-
-# Check system status
-make health
-```
-
-> 📋 **See [Makefile Commands](#makefile-commands) section below for complete documentation**
-
-### Setup Options
-
-#### Option 1: Simple Python Script (Original)
-```bash
-make setup           # Initial setup
-make start           # Start PostgreSQL
-make run-ingestion   # Run data ingestion
-```
-
-#### Option 2: Airflow Orchestration (Recommended)
-```bash
-make setup           # Initial setup
-make quick-airflow   # Start PostgreSQL + Airflow
-# Access Airflow Web UI at http://localhost:8080 (admin/admin)
-# Run the weather_onetime_setup DAG first (manual trigger)
-# The weather_hourly_ingestion DAG will run automatically every hour
-```
-
-## Makefile Commands
-
-The project includes a comprehensive Makefile that provides simple commands for all operations. This eliminates the need to remember complex Docker Compose commands and provides a consistent interface across different environments.
-
-### Quick Reference
-
-| Command | Description |
-|---------|-------------|
-| `make help` | Show all available commands |
-| `make setup` | Initial project setup |
-| `make start` | Start main services |
-| `make stop` | Stop main services |
-| `make status` | Show service status |
-| `make logs` | View service logs |
-| `make run-ingestion` | Run data ingestion |
-| `make airflow-start` | Start Airflow orchestration |
-| `make airflow-stop` | Stop Airflow orchestration |
-| `make airflow-status` | Show Airflow status |
-| `make test` | Run Python unit tests |
-| `make dbt-test` | Run dbt tests |
-| `make dbt-run` | Run dbt models |
-| `make health` | System health check |
-| `make clean` | Clean up everything |
-
-### Detailed Command Reference
-
-#### 🏗️ Setup & Installation Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make setup` | Initial project setup with prerequisite checks | `make setup` |
-| `make install` | Install Python dependencies from requirements.txt | `make install` |
-| `make dev-setup` | Setup development environment | `make dev-setup` |
-| `make env-check` | Check environment configuration | `make env-check` |
-
-#### 🚀 Main Services Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make start` | Start PostgreSQL and main services | `make start` |
-| `make stop` | Stop all main services | `make stop` |
-| `make restart` | Restart main services | `make restart` |
-| `make status` | Show status of main services | `make status` |
-| `make logs` | Show logs from main services | `make logs` |
-
-#### 🔄 Data Operations Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make run-ingestion` | Run the main Python ingestion script | `make run-ingestion` |
-| `make dbt-run` | Run dbt models to process data | `make dbt-run` |
-| `make dbt-test` | Run dbt tests for data quality | `make dbt-test` |
-| `make dbt-build` | Run dbt build (models + tests) | `make dbt-build` |
-
-#### ☁️ Airflow Orchestration Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make airflow-start` | Start Airflow orchestration | `make airflow-start` |
-| `make airflow-stop` | Stop Airflow orchestration | `make airflow-stop` |
-| `make airflow-status` | Show Airflow service status | `make airflow-status` |
-| `make airflow-logs` | Show Airflow logs | `make airflow-logs` |
-| `make airflow-restart` | Restart Airflow services | `make airflow-restart` |
-
-#### 🗄️ Database Operations Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make db-connect` | Connect to PostgreSQL database | `make db-connect` |
-| `make db-backup` | Create database backup | `make db-backup` |
-| `make db-restore` | Restore database from backup | `make db-restore BACKUP=backup_file.sql` |
-
-#### 🧪 Testing & Quality Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make test` | Run Python unit tests | `make test` |
-| `make lint` | Run code linting | `make lint` |
-| `make format` | Format Python code | `make format` |
-
-#### 🔧 Development & Monitoring Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make health` | Check system health and service status | `make health` |
-| `make version` | Show project version and system info | `make version` |
-| `make docs` | Show project documentation | `make docs` |
-
-#### 🧹 Cleanup Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make clean` | Clean up containers, volumes, and temporary files | `make clean` |
-| `make clean-logs` | Clean up log files | `make clean-logs` |
-| `make full-reset` | Full system reset (stops everything, cleans up, and restarts) | `make full-reset` |
-
-#### ⚡ Quick Workflow Commands
-
-| Command | Description | Usage |
-|---------|-------------|-------|
-| `make quick-start` | Quick start with main services | `make quick-start` |
-| `make quick-airflow` | Quick start with Airflow orchestration | `make quick-airflow` |
-
-### Common Workflows
-
-#### 🚀 Getting Started (First Time)
-```bash
-# 1. Initial setup
-make setup
-
-# 2. Choose your approach:
-# Option A: Simple Python script
-make quick-start
-make run-ingestion
-
-# Option B: Airflow orchestration (recommended)
-make quick-airflow
-# Then access http://localhost:8080 and run the onetime setup DAG
-```
-
-#### 🔄 Daily Operations
-```bash
-# Check system health
-make health
-
-# View logs
-make logs
-
-# Check Airflow status (if using Airflow)
-make airflow-status
-```
-
-#### 🧪 Development Workflow
-```bash
-# Run tests
-make test
-make dbt-test
-
-# Run data processing
-make dbt-run
-
-# Check everything is working
-make health
-```
-
-#### 🗄️ Database Management
-```bash
-# Create backup
-make db-backup
-
-# Connect to database
-make db-connect
-
-# Restore from backup
-make db-restore BACKUP=backups/backup_20241201_120000.sql
-```
-
-#### 🧹 Maintenance
-```bash
-# Clean up everything
-make clean
-
-# Full system reset
-make full-reset
-
-# Clean just logs
-make clean-logs
-```
-
-### Makefile Features
-
-- **Smart Prerequisites Checking**: Automatically validates Docker, Docker Compose, and environment setup
-- **Environment Integration**: Reads configuration from `.env` file automatically
-- **Error Handling**: Provides clear error messages and validation
-- **Cross-Platform**: Works on Linux, macOS, and Windows (with Make installed)
-- **Comprehensive Coverage**: All project operations accessible through simple commands
-- **Help System**: Built-in help with `make help` command
-- **Consistent Interface**: Same commands work regardless of underlying Docker Compose complexity
-
-### Prerequisites for Makefile
-
-- **Make**: Available on most Unix-like systems (Linux, macOS)
-- **Docker**: Required for containerized services
-- **Docker Compose**: Required for multi-container orchestration
-- **Python 3.11+**: Required for Python operations
-
-### Getting Help
-
-```bash
-# Show all available commands
-make help
-
-# Show version and system info
-make version
-
-# Check environment configuration
-make env-check
-
-# Check system health
-make health
-```
-
-### Airflow Orchestration
-
-The Airflow setup provides better orchestration, monitoring, and error handling:
-
-- **Web UI**: Visual DAG monitoring and task management
-- **Scheduling**: Automatic hourly execution at the 1st minute of each hour
-- **Error Handling**: Retry logic and failure notifications
-- **Logging**: Centralized task logs and execution history
-- **Dependencies**: Proper task dependencies and parallel execution
-
-See `airflow/README.md` for detailed Airflow setup instructions.
-
-### Configuration
-Key configuration variables in `utils/config.py`:
-- `BRIGHTSKY_BASE`: BrightSky API base URL
-- `HTTP_CONCURRENCY`: Number of concurrent API calls
-- `FORECAST_DAYS_BY`: Number of forecast days to ingest
-- `DEFAULT_COUNTRY`: Target country for data processing
-
-## Data Quality
-
-The system implements comprehensive data quality measures:
-- **Validation Rules**: Temperature, pressure, humidity, wind speed/direction ranges
-- **Outlier Detection**: Statistical validation of weather parameters
-- **Missing Data Handling**: Logging and flagging of incomplete records
-- **API Error Handling**: Graceful handling of API failures and timeouts
-- **Audit Logging**: Complete tracking of data processing steps
-
-## Future Enhancements
-
-### Planned Features
-1. **Data Transformation Pipeline**: Clean, aggregated data per postal code
-2. **ML-Ready Datasets**: Feature engineering for machine learning
-3. **Real-time Processing**: Stream processing for live data updates
-4. **Advanced Analytics**: Weather pattern analysis and forecasting
-5. **API Endpoints**: REST API for data access
-
-### Data Transformation Pipeline
-The next phase will include:
-- **Data Cleaning**: Outlier detection and correction
-- **Feature Engineering**: Derived weather metrics and trends
-- **Spatial Aggregation**: Postal code-level weather summaries
-- **ML Features**: Time series features for predictive modeling
-
-## Testing
-
-The project includes comprehensive testing at multiple levels:
-
-### **Python Unit Tests** (`ingestion_tests/`)
-- **Ingestion Tests**: API integration and data validation
-- **Transformation Tests**: Data cleaning and processing logic
-- **Integration Tests**: End-to-end workflow validation
-- **Utility Tests**: Helper functions and configurations
-
-```bash
-# Run all Python tests
-python -m pytest ingestion_tests/
-
-# Run specific test categories
-python -m pytest ingestion_tests/test_ingestion.py
-python -m pytest ingestion_tests/test_transformation.py
-```
-
-### **dbt Model Tests** (`tests/`)
-- **Data Quality Tests**: Range validations, null checks, format validations
-- **Business Logic Tests**: Outlier detection, confidence scoring, spatial linking
-- **Integration Tests**: Cross-model data integrity, referential integrity
-- **Custom Tests**: Weather-specific data quality validations
-
-```bash
-# Run all dbt tests
-dbt test
-
-# Run tests by category
-dbt test --select staging
-dbt test --select marts
-dbt test --select test_type:custom
-```
-
-### **Test Documentation**
-- **Python Tests**: See `ingestion_tests/README.md`
-- **dbt Tests**: See `tests/README.md`
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality (both Python and dbt tests)
-5. Run the test suite to ensure everything passes
-6. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 5. Description about Data Flow
+
+### Technology Choices and Architecture Decisions
+
+#### **Python for Raw Layer Processing**
+Python was chosen for the raw data ingestion layer due to several key advantages:
+
+- **API Integration**: Excellent libraries (`requests`, `aiohttp`) for efficient API consumption
+- **Spatial Processing**: Robust geospatial libraries (`geopandas`, `shapely`) for handling TopoJSON and spatial operations
+- **Data Validation**: Rich ecosystem for data quality checks and outlier detection
+- **Flexibility**: Easy to implement custom business logic and error handling
+- **Rapid Development**: Quick prototyping and iteration for data ingestion patterns
+- **Functional Programming Approach**: Chosen over object-oriented programming since each data entity (weather observations, forecasts, stations, postal areas) operates independently without complex object relationships, making functional programming more suitable for data processing pipelines
+
+#### **dbt for Transformation Layers**
+dbt was selected for staging, dimensions, facts, and marts layers because:
+
+- **SQL-First Approach**: Leverages existing SQL skills and database optimization
+- **Version Control**: Git-based workflow for data transformations
+- **Testing Framework**: Built-in data quality testing and validation
+- **Documentation**: Auto-generated documentation and lineage tracking
+- **Modularity**: Reusable models and macros for consistent transformations
+- **Database Optimization**: Pushes computation to the database engine (PostgreSQL/PostGIS)
+
+### Production Scaling Architecture
+
+For enterprise-scale deployments, the architecture can be enhanced with:
+
+**Data Lake Integration**: PostgreSQL → Kafka CDC → Data Lake (S3/GCS) → Data Warehouse
+- Real-time streaming with Kafka CDC for database changes
+- Cost-effective storage with S3/GCS using Parquet format and open table formats (Iceberg/Delta)
+
+**Enhanced Medallion Architecture**: Raw Layer (Bronze) → Staging Layer (Silver) → Analytics Layer (Gold)
+- Raw Layer: S3 Parquet files with AWS Glue catalog (or BigQuery external tables)
+- Staging Layer: dbt on Spark (EMR on EKS) or dbt on Snowflake/BigQuery compute
+- Analytics Layer: AWS Glue tables/Redshift Spectrum or native data warehouse tables
+- Orchestration: Airflow on Kubernetes with cloud-native operators
+
+**Data Quality and Governance**: SODA Framework → Prometheus Metrics → Grafana Dashboards → Alerting
+- Data contracts with schema validation and quality gates
+- Automated data quality checks across all layers
+- Complete observability with Prometheus metrics and Grafana dashboards
+
+**Production Deployment**: Kubernetes orchestration with Apache Spark for distributed processing
+- Container orchestration for scalability
+- Storage and compute separation for cost efficiency
+- Stream processing with Kafka Streams or Apache Flink for real-time data
+
+### Current vs. Production Architecture
+
+| Component | Current (Development) | Production (Scalable) |
+|-----------|----------------------|----------------------|
+| **Storage** | PostgreSQL | Data Lake (S3/GCS) + Data Warehouse |
+| **Processing** | Python + dbt | Spark + dbt on Spark |
+| **Orchestration** | Airflow (Docker) | Airflow on Kubernetes |
+| **Monitoring** | Basic logging | Prometheus + Grafana |
+| **Data Quality** | dbt tests | SODA + Data Contracts |
+| **CDC** | Manual refresh | Kafka CDC |
+| **Scalability** | Single instance | Auto-scaling clusters |
+
+## AI-Assisted Development
+
+This project demonstrates the effective collaboration between human expertise and AI assistance in modern data engineering. The development process leveraged AI capabilities while maintaining human oversight and domain knowledge.
+
+### AI Contributions
+
+**Code Generation and Architecture Design**
+- AI assisted in generating boilerplate code for data ingestion scripts, dbt models, and Airflow DAGs
+- Generated comprehensive test cases for both Python unit tests and dbt model tests
+- Created Docker configurations and orchestration scripts
+
+**Documentation and Knowledge Transfer**
+- AI generated detailed README sections, technical documentation, and code comments
+- Created visual diagrams (Mermaid) for data flow and ER diagrams
+- Assisted in writing comprehensive test documentation and setup guides
+- Generated production scaling recommendations and technology stack comparisons
+
+**Problem Solving and Debugging**
+- AI helped troubleshoot Docker container issues, dependency conflicts, and configuration problems
+- Assisted in resolving dbt model errors, SQL syntax issues, and data quality test failures
+- Provided solutions for Airflow orchestration challenges and service dependency management
+- Helped optimize database queries and performance tuning
+
+### Human Expertise and Oversight
+
+**Domain Knowledge and Business Logic**
+- Human expertise defined the weather data requirements, spatial processing needs, and business rules
+- Determined the scope (Berlin weather stations) and data quality thresholds
+- Made architectural decisions about technology choices (Python vs. other languages, dbt vs. other tools)
+- Defined the star schema design and fact/dimension relationships
+
+**Strategic Decision Making**
+- Chose functional programming over object-oriented approach based on data entity independence
+- Decided on the medallion architecture and layer separation strategy
+- Made production scaling decisions and technology stack selections
+- Defined the testing strategy and data quality framework
+
+**Code Review and Quality Assurance**
+- Human review ensured all AI-generated code met business requirements and best practices
+- Validated that architectural decisions aligned with project goals and constraints
+- Ensured proper error handling, logging, and monitoring implementation
+- Verified that the system met performance and scalability requirements
+
+This collaborative approach demonstrates how AI can enhance developer productivity while maintaining the critical human judgment needed for complex data engineering projects.

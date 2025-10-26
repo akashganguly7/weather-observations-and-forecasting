@@ -9,11 +9,10 @@ from datetime import datetime, timezone, timedelta
 from psycopg2.extras import execute_values
 
 from utils.config import HTTP_CONCURRENCY
-from utils.db import get_psycopg_conn, ensure_postgis_extension, ensure_weather_observed_schema, ensure_dq_schema
+from utils.db import get_psycopg_conn, ensure_postgis_extension, ensure_weather_observed_schema
 from utils.config import RAW_SCHEMA
 from utils.logger import logger
-from utils.weather_utils import load_station_id_mapping, log_no_data_stations_batch, \
-    fetch_observations_for_station_timestamp, parse_and_prepare
+from utils.weather_utils import fetch_observations_for_station_timestamp, parse_and_prepare
 
 
 def upsert_observations_batch(values):
@@ -39,7 +38,6 @@ def ingest_observed_weather(wmo_station_ids):
     # Ensure required schemas exist
     ensure_postgis_extension()
     ensure_weather_observed_schema()
-    ensure_dq_schema()
     
     # Calculate timestamp_str_from and timestamp_str_to, example, from '2023-08-07T23:00:00' to '2023-08-07T23:01:00'
     # This will fetch data for 2300 hour
@@ -56,12 +54,6 @@ def ingest_observed_weather(wmo_station_ids):
         return 0
     
     logger.info("Ingesting observations for %s stations from %s to %s", len(wmo_station_ids), timestamp_str_from, timestamp_str_to)
-    
-    # Load station ID mapping into memory once for the specific stations
-    station_id_mapping = load_station_id_mapping(wmo_station_ids)
-    if not station_id_mapping:
-        logger.error("Failed to load station ID mapping, aborting ingestion")
-        return 0
     
     # Create batches for parallel processing
     batch_size = max(1, len(wmo_station_ids) // HTTP_CONCURRENCY)
@@ -101,9 +93,7 @@ def ingest_observed_weather(wmo_station_ids):
                             
             except Exception as e:
                 logger.exception("Error fetching observations for station batch %s: %s", station_batch, e)
-            # Log all no-data stations for this batch
-            if no_data_stations:
-                log_no_data_stations_batch(no_data_stations)
+            # Note: Data quality logging will be handled at mart level
             
             return total_count
         except Exception as e:

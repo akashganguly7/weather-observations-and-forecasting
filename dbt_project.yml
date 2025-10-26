@@ -2,6 +2,14 @@ name: 'weather_observations_and_forecasting'
 version: '1.0.0'
 config-version: 2
 
+# Variables for schema names
+vars:
+  raw_schema: "raw"
+  staging_schema: "staging"
+  dimensions_schema: "dimensions"
+  fact_schema: "facts"
+  business_mart_schema: "business_marts"
+
 # This setting configures which "profile" dbt uses for this project.
 profile: 'weather_observations_and_forecasting'
 
@@ -37,12 +45,12 @@ models:
     # Fact models in fact schema
     facts:
       +materialized: table
-      +schema: "{{ env_var('FACT_SCHEMA', 'fact') }}"
+      +schema: "{{ env_var('FACT_SCHEMA', 'facts') }}"
     
     # Mart models in business_mart schema
     marts:
       +materialized: table
-      +schema: "{{ env_var('BUSINESS_MART_SCHEMA', 'business_mart') }}"
+      +schema: "{{ env_var('BUSINESS_MART_SCHEMA', 'business_marts') }}"
 
 # Test configurations
 data_tests:

@@ -23,16 +23,17 @@ Custom test macros for weather-specific data quality validation:
 ### 2. **Model-Specific Tests**
 
 #### **Staging Models**
-- `test_stg_weather_observed_hourly_standardized.sql` - Tests for observed weather data
-- `test_stg_weather_forecast_hourly_standardized.sql` - Tests for forecast weather data
+- `test_stg_weather_observed_hourly.sql` - Tests for observed weather data
+- `test_stg_weather_forecast_hourly.sql` - Tests for forecast weather data
 - `test_stg_dim_station.sql` - Tests for station dimension table
 - `test_stg_dim_postal_area.sql` - Tests for postal area dimension table
 
-#### **Intermediate Models**
-- `test_int_link_postcode_station.sql` - Tests for spatial linking logic
+#### **Fact Models**
+- `test_facts_link_postcode_station.sql` - Tests for spatial linking logic
 
 #### **Marts Models**
-- `test_mart_weather_forecast_hourly_aggregated.sql` - Tests for aggregated weather data
+- `test_mart_weather_forecast_hourly_aggregated.sql` - Tests for aggregated forecast weather data
+- `test_mart_weather_observed_hourly_aggregated.sql` - Tests for aggregated observed weather data
 
 #### **Integration Tests**
 - `test_data_integrity.sql` - Cross-model data integrity tests
@@ -95,10 +96,10 @@ dbt test --select test_type:integration
 ### **Run Specific Model Tests**
 ```bash
 # Test specific model
-dbt test --select stg_weather_observed_hourly_standardized
+dbt test --select stg_weather_observed_hourly
 
 # Test model and its downstream dependencies
-dbt test --select stg_weather_observed_hourly_standardized+
+dbt test --select stg_weather_observed_hourly+
 ```
 
 ### **Run Tests with Different Severity**

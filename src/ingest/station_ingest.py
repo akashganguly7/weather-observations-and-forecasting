@@ -1,13 +1,11 @@
-import requests
-from utils.db import get_psycopg_conn, get_sqlalchemy_engine, ensure_postgis_extension, ensure_station_schema
-from utils.config import DIMENSIONS_SCHEMA
-from utils.logger import logger
-from sqlalchemy import text
 import json
-import io
 
-from configparser import ConfigParser
-from utils.config import BRIGHTSKY_BASE
+import requests
+
+from utils.config import RAW_SCHEMA
+from utils.db import get_psycopg_conn, ensure_postgis_extension, ensure_station_raw_schema
+from utils.logger import logger
+
 
 def download_wmo_stations(url: str):
     """
@@ -63,22 +61,16 @@ def download_wmo_stations(url: str):
 
 def upsert_stations(sources, record_source="brightsky"):
     """
-    upsert list of station dicts into dim_station using SCD Type 1 pattern
+    upsert list of station dicts into station_raw table
     expects fields: wmo_station_id, station_name, lat, lon
     """
+    ensure_postgis_extension()
+    ensure_station_raw_schema()
     conn = get_psycopg_conn()
     cur = conn.cursor()
     sql = f"""
-    INSERT INTO {DIMENSIONS_SCHEMA}.dim_station (station_name, wmo_station_id, lat, lon, geometry, properties, record_source)
-    VALUES (%s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s),4326), %s::jsonb, %s)
-    ON CONFLICT (wmo_station_id) DO UPDATE SET
-      station_name = EXCLUDED.station_name,
-      lat = EXCLUDED.lat,
-      lon = EXCLUDED.lon,
-      geometry = EXCLUDED.geometry,
-      properties = EXCLUDED.properties,
-      record_source = EXCLUDED.record_source,
-      load_dts = now();
+    INSERT INTO {RAW_SCHEMA}.station_raw (station_name, wmo_station_id, lat, lon, properties, record_source)
+    VALUES (%s, %s, %s, %s, %s::jsonb, %s)
     """
     count = 0
     for s in sources:
@@ -91,7 +83,7 @@ def upsert_stations(sources, record_source="brightsky"):
             # skip if no coordinates or WMO ID
             continue
         try:
-            cur.execute(sql, (name, wmo, lat, lon, lon, lat, json.dumps(props), record_source))
+            cur.execute(sql, (name, wmo, lat, lon, json.dumps(props), record_source))
             conn.commit()  # Commit after each successful row
             count += 1
         except Exception as e:
@@ -110,7 +102,6 @@ def ingest_wmo_stations(url: str):
     
     # Ensure required schemas exist
     ensure_postgis_extension()
-    ensure_station_schema()
     
     stations = download_wmo_stations(url)
     return upsert_stations(stations, record_source="wmo_dwd")

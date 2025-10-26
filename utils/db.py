@@ -1,7 +1,7 @@
 from psycopg2 import connect
 from sqlalchemy import create_engine, text
 
-from .config import DATABASE_URL, get_database_url, MAIN_DB, RAW_SCHEMA, STAGING_SCHEMA, DIMENSIONS_SCHEMA, FACT_SCHEMA, BUSINESS_MART_SCHEMA
+from .config import get_database_url, MAIN_DB, RAW_SCHEMA
 from .logger import logger
 
 # Engine cache
@@ -31,49 +31,12 @@ def ensure_postgis_extension():
 
 
 def ensure_schemas():
-    """Create all required schemas if they don't exist."""
-    schemas = [RAW_SCHEMA, STAGING_SCHEMA, DIMENSIONS_SCHEMA, FACT_SCHEMA, BUSINESS_MART_SCHEMA]
+    """Create raw schema if it doesn't exist."""
     engine = get_sqlalchemy_engine()
     with engine.begin() as conn:
-        for schema in schemas:
-            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-        logger.info(f"Ensured all schemas exist: {schemas}")
+        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}"))
+        logger.info(f"Ensured raw schema exists: {RAW_SCHEMA}")
 
-def ensure_postal_area_schema():
-    """Create postal area dimension table and indexes in dimensions schema."""
-    sql = f"""
-    CREATE TABLE IF NOT EXISTS {DIMENSIONS_SCHEMA}.dim_postal_area (
-        plz VARCHAR PRIMARY KEY,
-        wkt TEXT,
-        geometry GEOMETRY(MULTIPOLYGON,4326)
-    );
-    CREATE INDEX IF NOT EXISTS idx_dim_postal_geom ON {DIMENSIONS_SCHEMA}.dim_postal_area USING GIST(geometry);
-    """
-    engine = get_sqlalchemy_engine()
-    with engine.begin() as conn:
-        logger.info(f"Ensuring postal area schema exists in {DIMENSIONS_SCHEMA} schema...")
-        conn.execute(text(sql))
-
-def ensure_station_schema():
-    """Create station dimension table and indexes in dimensions schema."""
-    sql = f"""
-    CREATE TABLE IF NOT EXISTS {DIMENSIONS_SCHEMA}.dim_station (
-        id SERIAL PRIMARY KEY,
-        station_name TEXT,
-        wmo_station_id VARCHAR UNIQUE,
-        lat DOUBLE PRECISION,
-        lon DOUBLE PRECISION,
-        geometry GEOMETRY(POINT,4326),
-        properties JSONB,
-        record_source TEXT,
-        load_dts TIMESTAMP DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_dim_station_geometry ON {DIMENSIONS_SCHEMA}.dim_station USING GIST(geometry);
-    """
-    engine = get_sqlalchemy_engine()
-    with engine.begin() as conn:
-        logger.info(f"Ensuring station schema exists in {DIMENSIONS_SCHEMA} schema...")
-        conn.execute(text(sql))
 
 def ensure_weather_observed_schema():
     """Create weather observed raw table and indexes in raw schema."""
@@ -121,49 +84,56 @@ def ensure_weather_forecast_schema():
         logger.info(f"Ensuring weather forecast schema exists in {RAW_SCHEMA} schema...")
         conn.execute(text(sql))
 
-def ensure_dq_schema():
-    """Create data quality tables and indexes in raw schema."""
+def ensure_station_raw_schema():
+    """Create station raw table and indexes in raw schema."""
     sql = f"""
-    CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.dq_no_data_stations (
-        id SERIAL PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.station_raw (
         wmo_station_id VARCHAR,
-        timestamp_str VARCHAR,
-        api_url TEXT,
-        http_status INTEGER,
-        response_message TEXT,
-        created_at TIMESTAMP DEFAULT now()
+        station_name TEXT,
+        lat DOUBLE PRECISION,
+        lon DOUBLE PRECISION,
+        properties JSONB,
+        record_source TEXT,
+        load_dts TIMESTAMP DEFAULT now()
     );
     
-    CREATE INDEX IF NOT EXISTS idx_dq_no_data_stations_station_id 
-    ON {RAW_SCHEMA}.dq_no_data_stations (wmo_station_id);
+    CREATE INDEX IF NOT EXISTS idx_station_raw_wmo_station_id 
+    ON {RAW_SCHEMA}.station_raw (wmo_station_id);
     
-    CREATE INDEX IF NOT EXISTS idx_dq_no_data_stations_created_at 
-    ON {RAW_SCHEMA}.dq_no_data_stations (created_at);
+    CREATE INDEX IF NOT EXISTS idx_station_raw_load_dts 
+    ON {RAW_SCHEMA}.station_raw (load_dts);
     """
     engine = get_sqlalchemy_engine()
     with engine.begin() as conn:
-        logger.info(f"Ensuring data quality schema exists in {RAW_SCHEMA} schema...")
+        logger.info(f"Ensuring station raw schema exists in {RAW_SCHEMA} schema...")
         conn.execute(text(sql))
 
-def ensure_spatial_linking_schema():
-    """Create spatial linking table and indexes in fact schema."""
+def ensure_postal_raw_schema():
+    """Create postal area raw table and indexes in raw schema."""
     sql = f"""
-    CREATE TABLE IF NOT EXISTS {FACT_SCHEMA}.link_postcode_station (
-        plz VARCHAR PRIMARY KEY,
-        station_id INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT now()
+    CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.postal_area_raw (
+        plz VARCHAR,
+        wkt TEXT,
+        geometry GEOMETRY(MULTIPOLYGON,4326),
+        record_source TEXT,
+        load_dts TIMESTAMP DEFAULT now()
     );
     
-    CREATE INDEX IF NOT EXISTS idx_link_postcode_station_station_id 
-    ON {FACT_SCHEMA}.link_postcode_station (station_id);
+    CREATE INDEX IF NOT EXISTS idx_postal_area_raw_plz 
+    ON {RAW_SCHEMA}.postal_area_raw (plz);
     
-    CREATE INDEX IF NOT EXISTS idx_link_postcode_station_created_at 
-    ON {FACT_SCHEMA}.link_postcode_station (created_at);
+    CREATE INDEX IF NOT EXISTS idx_postal_area_raw_geometry 
+    ON {RAW_SCHEMA}.postal_area_raw USING GIST(geometry);
+    
+    CREATE INDEX IF NOT EXISTS idx_postal_area_raw_load_dts 
+    ON {RAW_SCHEMA}.postal_area_raw (load_dts);
     """
     engine = get_sqlalchemy_engine()
     with engine.begin() as conn:
-        logger.info(f"Ensuring spatial linking schema exists in {FACT_SCHEMA} schema...")
+        logger.info(f"Ensuring postal area raw schema exists in {RAW_SCHEMA} schema...")
         conn.execute(text(sql))
+
+
 
 def create_main_database():
     """Create the main database if it doesn't exist."""
@@ -204,33 +174,32 @@ def setup_database_extensions():
         raise
 
 
-def setup_schema_architecture():
-    """Set up the complete schema-based architecture."""
-    logger.info("Starting schema-based setup...")
+def setup_raw_schema_architecture():
+    """Set up the raw schema architecture for data ingestion."""
+    logger.info("Starting raw schema setup...")
     
     try:
         create_main_database()
         setup_database_extensions()
         ensure_schemas()
-        logger.info("Schema-based setup completed successfully!")
+        logger.info("Raw schema setup completed successfully!")
         
     except Exception as e:
-        logger.error(f"Schema setup failed: {e}")
+        logger.error(f"Raw schema setup failed: {e}")
         raise
 
 def ensure_schema():
     """
-    Create all tables required by pipelines if they don't exist.
-    This is a convenience function that calls all individual schema functions.
+    Create all raw tables required by ingestion pipelines if they don't exist.
+    This function only creates raw schema tables - all other tables are created by dbt models.
     """
-    # First ensure the schema-based architecture is set up
-    setup_schema_architecture()
+    # First ensure the raw schema architecture is set up
+    setup_raw_schema_architecture()
     
-    # Then create all tables in their appropriate schemas
-    ensure_postal_area_schema()
-    ensure_station_schema()
+    # Create all raw tables (Bronze layer)
+    ensure_station_raw_schema()
+    ensure_postal_raw_schema()
     ensure_weather_observed_schema()
     ensure_weather_forecast_schema()
-    ensure_dq_schema()
-    ensure_spatial_linking_schema()
-    logger.info("All schema tables ensured successfully")
+    
+    logger.info("All raw schema tables ensured successfully")

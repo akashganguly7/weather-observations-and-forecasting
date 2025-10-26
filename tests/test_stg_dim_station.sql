@@ -16,10 +16,10 @@ with station_checks as (
   
   union all
   
-  -- Test 3: All stations have station ID
-  select 'null_station_id' as check_name, *
+  -- Test 3: All stations have station name
+  select 'null_station_name' as check_name, *
   from {{ ref('stg_dim_station') }}
-  where id is null
+  where station_name is null
   
   union all
   

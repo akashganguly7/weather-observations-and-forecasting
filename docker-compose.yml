@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgis/postgis:15-3.3
@@ -14,18 +12,6 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       retries: 5
-
-  ingestion:
-    build: .
-    container_name: weather_ingest
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file:
-      - .env
-    volumes:
-      - .:/app  # mounts your local project folder for live code editing
-    command: python main.py
 
   dbt:
     build:
@@ -42,7 +28,7 @@ services:
     volumes:
       - .:/usr/app
     working_dir: /usr/app
-    command: ["sh", "-c", "dbt deps && dbt build"]
+    command: ["sh", "-c", "dbt deps && tail -f /dev/null"]
 
   dbt-test:
     build:

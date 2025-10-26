@@ -107,92 +107,23 @@ def parse_and_prepare( raw_response, record_source="brightsky_weather"):
         ))
     return recs, None
 
-def load_station_id_mapping(wmo_station_ids):
-    """
-    Load WMO station ID to internal ID mapping into memory for specific stations.
-    Returns a dictionary mapping wmo_station_id -> internal_id
-    """
-    try:
-        engine = get_sqlalchemy_engine()
-        with engine.begin() as conn:
-            # Only load mappings for the stations we're processing
-            query = text(f"SELECT wmo_station_id, id FROM {DIMENSIONS_SCHEMA}.dim_station WHERE wmo_station_id = ANY(:station_ids)")
-            results = conn.execute(query, {"station_ids": wmo_station_ids}).fetchall()
-            
-            mapping = {row[0]: row[1] for row in results}
-            logger.info("Loaded %d station ID mappings into memory for %d requested stations", len(mapping), len(wmo_station_ids))
-            return mapping
-    except Exception as e:
-        logger.error("Error loading station ID mapping: %s", str(e))
-        return {}
-
-def log_no_data_stations_batch(no_data_stations):
-    """
-    Log multiple no-data stations in batch to the dq_no_data_stations table.
-    """
-    if not no_data_stations:
-        return
-        
-    try:
-        conn = get_psycopg_conn()
-        cur = conn.cursor()
-        
-        # Prepare batch data
-        batch_data = []
-        for station_info in no_data_stations:
-            batch_data.append((
-                station_info.get('_station_id'),
-                station_info.get('_timestamp_str'),
-                station_info.get('_api_url'),
-                station_info.get('_http_status'),
-                station_info.get('_response_message')
-            ))
-        
-        # Batch insert
-        insert_sql = f"""
-        INSERT INTO {RAW_SCHEMA}.dq_no_data_stations 
-        (wmo_station_id, timestamp_str, api_url, http_status, response_message)
-        VALUES %s
-        """
-        
-        execute_values(cur, insert_sql, batch_data, page_size=100)
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        logger.info("Logged %d no-data stations to dq_no_data_stations table", len(no_data_stations))
-        
-    except Exception as e:
-        logger.error("Failed to log no-data stations batch: %s", str(e))
-
-def get_station_ids_for_scope(plz3_prefix=None, country=None):
+def get_station_ids_for_scope(station_name=None):
     """
     Get WMO station IDs for the specified scope.
     Uses simple cross-schema queries within the same database.
     """
-    if plz3_prefix:
-        # Simple cross-schema join within the same database
+    if station_name:
+        # Join fact table with dimension tables
         engine = get_sqlalchemy_engine()
         with engine.begin() as conn:
             q = text(f"""
-                SELECT DISTINCT ds.wmo_station_id 
-                FROM {FACT_SCHEMA}.link_postcode_station lps
-                JOIN {DIMENSIONS_SCHEMA}.dim_station ds ON lps.station_id = ds.id
-                WHERE lps.plz ILIKE :plz3_prefix
+                select distinct wmo_station_id from {RAW_SCHEMA}.station_raw where lower(station_name) like 'berlin%';
             """)
-            rows = conn.execute(q, {"plz3_prefix": f"{plz3_prefix}%"}).fetchall()
-            return [r[0] for r in rows]
-    
-    elif country:
-        # For country filtering, query dimensions schema directly
-        engine = get_sqlalchemy_engine()
-        with engine.begin() as conn:
-            q = text(f"SELECT wmo_station_id FROM {DIMENSIONS_SCHEMA}.dim_station WHERE (properties->>'country')::text ILIKE :c")
-            rows = conn.execute(q, {"c": f"%{country}%"}).fetchall()
+            rows = conn.execute(q).fetchall()
             return [r[0] for r in rows]
     else:
         # Get all stations from dimensions schema
         engine = get_sqlalchemy_engine()
         with engine.begin() as conn:
-            rows = conn.execute(text(f"SELECT wmo_station_id FROM {DIMENSIONS_SCHEMA}.dim_station")).fetchall()
+            rows = conn.execute(text(f"select distinct wmo_station_id from {RAW_SCHEMA}.station_raw")).fetchall()
             return [r[0] for r in rows]
