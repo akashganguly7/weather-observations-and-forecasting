@@ -265,7 +265,6 @@ credentials/
 *.7z
 
 # Model files (if using ML models)
-models/
 *.pkl
 *.joblib
 *.h5

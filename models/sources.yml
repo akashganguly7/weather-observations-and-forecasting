@@ -1,0 +1,282 @@
+version: 2
+
+sources:
+  # Raw database sources
+  - name: raw
+    description: "Raw data from ingestion processes"
+    schema: "{{ var('raw_schema') }}"
+    tables:
+      - name: weather_hourly_observed_raw
+        description: "Raw weather observation data from BrightSky API"
+        columns:
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+          - name: timestamp_utc
+            description: "Timestamp in UTC"
+            tests:
+              - not_null
+          - name: raw
+            description: "Raw JSON data from API"
+            tests:
+              - not_null
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null
+              
+      - name: weather_hourly_forecast_raw
+        description: "Raw weather forecast data from BrightSky API"
+        columns:
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+          - name: timestamp_utc
+            description: "Timestamp in UTC"
+            tests:
+              - not_null
+          - name: raw
+            description: "Raw JSON data from API"
+            tests:
+              - not_null
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null
+              
+      - name: station_raw
+        description: "Raw station data from BrightSky API"
+        columns:
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+          - name: station_name
+            description: "Station name"
+            tests:
+              - not_null
+          - name: lat
+            description: "Latitude"
+            tests:
+              - not_null
+          - name: lon
+            description: "Longitude"
+            tests:
+              - not_null
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null
+              
+      - name: postal_area_raw
+        description: "Raw postal area data from TopoJSON"
+        columns:
+          - name: plz
+            description: "Postal code"
+            tests:
+              - not_null
+          - name: geometry
+            description: "Postal area geometry"
+            tests:
+              - not_null
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null
+              
+
+  # Dimensions database sources
+  - name: dimensions
+    description: "Dimension tables and reference data"
+    schema: "{{ var('dimensions_schema') }}"
+    tables:
+      - name: dim_postal_area
+        description: "Postal area dimension table with geometries"
+        columns:
+          - name: plz
+            description: "Postal code"
+            tests:
+              - not_null
+              - unique
+          - name: geometry
+            description: "Postal area geometry"
+            tests:
+              - not_null
+              
+      - name: dim_station
+        description: "Weather station dimension table"
+        columns:
+          - name: id
+            description: "Internal station ID"
+            tests:
+              - not_null
+              - unique
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+              - unique
+          - name: station_name
+            description: "Station name"
+            tests:
+              - not_null
+          - name: geometry
+            description: "Station location geometry"
+            tests:
+              - not_null
+
+  # Fact database sources
+  - name: fact
+    description: "Fact tables and linking tables"
+    schema: "{{ var('fact_schema') }}"
+    tables:
+      - name: fact_link_postcode_station
+        description: "Spatial linking between postal codes and stations"
+        columns:
+          - name: postal_area_id
+            description: "Postal area dimension ID"
+            tests:
+              - not_null
+              - unique
+          - name: station_id
+            description: "Internal station ID"
+            tests:
+              - not_null
+          - name: created_at
+            description: "Record creation timestamp"
+            tests:
+              - not_null
+              
+      - name: fact_weather_forecast_hourly
+        description: "Weather forecast data at postal code level"
+        columns:
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+          - name: station_id
+            description: "Internal station dimension ID"
+            tests:
+              - not_null
+          - name: plz
+            description: "Postal code"
+            tests:
+              - not_null
+          - name: timestamp_utc
+            description: "Timestamp in UTC"
+            tests:
+              - not_null
+          - name: temperature
+            description: "Temperature in Celsius"
+          - name: precipitation
+            description: "Precipitation in mm"
+          - name: wind_speed
+            description: "Wind speed in m/s"
+          - name: wind_direction
+            description: "Wind direction in degrees"
+          - name: pressure_msl
+            description: "Pressure at mean sea level in hPa"
+          - name: relative_humidity
+            description: "Relative humidity percentage"
+          - name: cloud_cover
+            description: "Cloud cover percentage"
+          - name: visibility
+            description: "Visibility in meters"
+          - name: dew_point
+            description: "Dew point temperature in Celsius"
+          - name: solar
+            description: "Solar radiation"
+          - name: sunshine
+            description: "Sunshine duration in minutes"
+          - name: wind_gust_speed
+            description: "Wind gust speed in m/s"
+          - name: wind_gust_direction
+            description: "Wind gust direction in degrees"
+          - name: precipitation_probability
+            description: "Precipitation probability percentage"
+          - name: precipitation_probability_6h
+            description: "6-hour precipitation probability percentage"
+          - name: weather_condition
+            description: "Weather condition description"
+          - name: weather_icon
+            description: "Weather icon identifier"
+          - name: outlier_flag
+            description: "Flag indicating outlier detection"
+          - name: confidence_score
+            description: "Data quality confidence score (0-1)"
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 1
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null
+              
+      - name: fact_weather_observed_hourly
+        description: "Weather observation data at postal code level"
+        columns:
+          - name: wmo_station_id
+            description: "WMO station identifier"
+            tests:
+              - not_null
+          - name: station_id
+            description: "Internal station dimension ID"
+            tests:
+              - not_null
+          - name: plz
+            description: "Postal code"
+            tests:
+              - not_null
+          - name: timestamp_utc
+            description: "Timestamp in UTC"
+            tests:
+              - not_null
+          - name: temperature
+            description: "Temperature in Celsius"
+          - name: precipitation
+            description: "Precipitation in mm"
+          - name: wind_speed
+            description: "Wind speed in m/s"
+          - name: wind_direction
+            description: "Wind direction in degrees"
+          - name: pressure_msl
+            description: "Pressure at mean sea level in hPa"
+          - name: relative_humidity
+            description: "Relative humidity percentage"
+          - name: cloud_cover
+            description: "Cloud cover percentage"
+          - name: visibility
+            description: "Visibility in meters"
+          - name: dew_point
+            description: "Dew point temperature in Celsius"
+          - name: solar
+            description: "Solar radiation"
+          - name: sunshine
+            description: "Sunshine duration in minutes"
+          - name: wind_gust_speed
+            description: "Wind gust speed in m/s"
+          - name: wind_gust_direction
+            description: "Wind gust direction in degrees"
+          - name: precipitation_probability
+            description: "Precipitation probability percentage"
+          - name: precipitation_probability_6h
+            description: "6-hour precipitation probability percentage"
+          - name: weather_condition
+            description: "Weather condition description"
+          - name: weather_icon
+            description: "Weather icon identifier"
+          - name: outlier_flag
+            description: "Flag indicating outlier detection"
+          - name: confidence_score
+            description: "Data quality confidence score (0-1)"
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 1
+          - name: load_dts
+            description: "Data load timestamp"
+            tests:
+              - not_null

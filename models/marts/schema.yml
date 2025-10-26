@@ -1,0 +1,254 @@
+version: 2
+
+models:
+  - name: mart_weather_forecast_hourly_aggregated
+    description: "Aggregated weather forecast data by postal code"
+    columns:
+      - name: plz
+        description: "Postal code"
+        tests:
+          - not_null
+      - name: timestamp_utc
+        description: "Timestamp in UTC"
+        tests:
+          - not_null
+      - name: temperature_avg
+        description: "Average temperature in Celsius"
+      - name: temperature_min
+        description: "Minimum temperature in Celsius"
+      - name: temperature_max
+        description: "Maximum temperature in Celsius"
+      - name: temperature_std
+        description: "Temperature standard deviation"
+      - name: precipitation_sum
+        description: "Total precipitation in mm"
+      - name: precipitation_avg
+        description: "Average precipitation in mm"
+      - name: precipitation_max
+        description: "Maximum precipitation in mm"
+      - name: precipitation_std
+        description: "Precipitation standard deviation"
+      - name: wind_speed_avg
+        description: "Average wind speed in m/s"
+      - name: wind_speed_max
+        description: "Maximum wind speed in m/s"
+      - name: wind_speed_std
+        description: "Wind speed standard deviation"
+      - name: wind_direction_avg
+        description: "Average wind direction in degrees"
+      - name: wind_direction_std
+        description: "Wind direction standard deviation"
+      - name: pressure_msl_avg
+        description: "Average pressure at mean sea level in hPa"
+      - name: pressure_msl_min
+        description: "Minimum pressure at mean sea level in hPa"
+      - name: pressure_msl_max
+        description: "Maximum pressure at mean sea level in hPa"
+      - name: pressure_msl_std
+        description: "Pressure standard deviation"
+      - name: relative_humidity_avg
+        description: "Average relative humidity percentage"
+      - name: relative_humidity_min
+        description: "Minimum relative humidity percentage"
+      - name: relative_humidity_max
+        description: "Maximum relative humidity percentage"
+      - name: relative_humidity_std
+        description: "Relative humidity standard deviation"
+      - name: cloud_cover_avg
+        description: "Average cloud cover percentage"
+      - name: cloud_cover_std
+        description: "Cloud cover standard deviation"
+      - name: visibility_avg
+        description: "Average visibility in meters"
+      - name: visibility_min
+        description: "Minimum visibility in meters"
+      - name: visibility_max
+        description: "Maximum visibility in meters"
+      - name: visibility_std
+        description: "Visibility standard deviation"
+      - name: dew_point_avg
+        description: "Average dew point temperature in Celsius"
+      - name: dew_point_std
+        description: "Dew point standard deviation"
+      - name: solar_avg
+        description: "Average solar radiation"
+      - name: solar_max
+        description: "Maximum solar radiation"
+      - name: solar_std
+        description: "Solar radiation standard deviation"
+      - name: sunshine_avg
+        description: "Average sunshine duration in minutes"
+      - name: sunshine_max
+        description: "Maximum sunshine duration in minutes"
+      - name: sunshine_std
+        description: "Sunshine duration standard deviation"
+      - name: wind_gust_speed_avg
+        description: "Average wind gust speed in m/s"
+      - name: wind_gust_speed_max
+        description: "Maximum wind gust speed in m/s"
+      - name: wind_gust_speed_std
+        description: "Wind gust speed standard deviation"
+      - name: wind_gust_direction_avg
+        description: "Average wind gust direction in degrees"
+      - name: wind_gust_direction_std
+        description: "Wind gust direction standard deviation"
+      - name: precipitation_probability_avg
+        description: "Average precipitation probability percentage"
+      - name: precipitation_probability_std
+        description: "Precipitation probability standard deviation"
+      - name: precipitation_probability_6h_avg
+        description: "Average 6-hour precipitation probability percentage"
+      - name: precipitation_probability_6h_std
+        description: "6-hour precipitation probability standard deviation"
+      - name: station_count
+        description: "Number of stations contributing to aggregation"
+        tests:
+          - not_null
+      - name: data_completeness
+        description: "Data completeness ratio (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: outlier_count
+        description: "Number of outlier records"
+      - name: confidence_score_avg
+        description: "Average confidence score (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: weather_condition_mode
+        description: "Most common weather condition"
+      - name: weather_icon_mode
+        description: "Most common weather icon"
+      - name: record_source
+        description: "Record source identifier"
+      - name: load_dts
+        description: "Data load timestamp"
+
+  - name: mart_weather_observed_hourly_aggregated
+    description: "Aggregated weather observed data by postal code"
+    columns:
+      - name: plz
+        description: "Postal code"
+        tests:
+          - not_null
+      - name: timestamp_utc
+        description: "Timestamp in UTC"
+        tests:
+          - not_null
+      - name: temperature_avg
+        description: "Average temperature in Celsius"
+      - name: temperature_min
+        description: "Minimum temperature in Celsius"
+      - name: temperature_max
+        description: "Maximum temperature in Celsius"
+      - name: temperature_std
+        description: "Temperature standard deviation"
+      - name: precipitation_sum
+        description: "Total precipitation in mm"
+      - name: precipitation_avg
+        description: "Average precipitation in mm"
+      - name: precipitation_max
+        description: "Maximum precipitation in mm"
+      - name: precipitation_std
+        description: "Precipitation standard deviation"
+      - name: wind_speed_avg
+        description: "Average wind speed in m/s"
+      - name: wind_speed_max
+        description: "Maximum wind speed in m/s"
+      - name: wind_speed_std
+        description: "Wind speed standard deviation"
+      - name: wind_direction_avg
+        description: "Average wind direction in degrees"
+      - name: wind_direction_std
+        description: "Wind direction standard deviation"
+      - name: pressure_msl_avg
+        description: "Average pressure at mean sea level in hPa"
+      - name: pressure_msl_min
+        description: "Minimum pressure at mean sea level in hPa"
+      - name: pressure_msl_max
+        description: "Maximum pressure at mean sea level in hPa"
+      - name: pressure_msl_std
+        description: "Pressure standard deviation"
+      - name: relative_humidity_avg
+        description: "Average relative humidity percentage"
+      - name: relative_humidity_min
+        description: "Minimum relative humidity percentage"
+      - name: relative_humidity_max
+        description: "Maximum relative humidity percentage"
+      - name: relative_humidity_std
+        description: "Relative humidity standard deviation"
+      - name: cloud_cover_avg
+        description: "Average cloud cover percentage"
+      - name: cloud_cover_std
+        description: "Cloud cover standard deviation"
+      - name: visibility_avg
+        description: "Average visibility in meters"
+      - name: visibility_min
+        description: "Minimum visibility in meters"
+      - name: visibility_max
+        description: "Maximum visibility in meters"
+      - name: visibility_std
+        description: "Visibility standard deviation"
+      - name: dew_point_avg
+        description: "Average dew point temperature in Celsius"
+      - name: dew_point_std
+        description: "Dew point standard deviation"
+      - name: solar_avg
+        description: "Average solar radiation"
+      - name: solar_max
+        description: "Maximum solar radiation"
+      - name: solar_std
+        description: "Solar radiation standard deviation"
+      - name: sunshine_avg
+        description: "Average sunshine duration in minutes"
+      - name: sunshine_max
+        description: "Maximum sunshine duration in minutes"
+      - name: sunshine_std
+        description: "Sunshine duration standard deviation"
+      - name: wind_gust_speed_avg
+        description: "Average wind gust speed in m/s"
+      - name: wind_gust_speed_max
+        description: "Maximum wind gust speed in m/s"
+      - name: wind_gust_speed_std
+        description: "Wind gust speed standard deviation"
+      - name: wind_gust_direction_avg
+        description: "Average wind gust direction in degrees"
+      - name: wind_gust_direction_std
+        description: "Wind gust direction standard deviation"
+      - name: precipitation_probability_avg
+        description: "Average precipitation probability percentage"
+      - name: precipitation_probability_std
+        description: "Precipitation probability standard deviation"
+      - name: precipitation_probability_6h_avg
+        description: "Average 6-hour precipitation probability percentage"
+      - name: precipitation_probability_6h_std
+        description: "6-hour precipitation probability standard deviation"
+      - name: station_count
+        description: "Number of stations contributing to aggregation"
+        tests:
+          - not_null
+      - name: data_completeness
+        description: "Data completeness ratio (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: outlier_count
+        description: "Number of outlier records"
+      - name: confidence_score_avg
+        description: "Average confidence score (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: weather_condition_mode
+        description: "Most common weather condition"
+      - name: weather_icon_mode
+        description: "Most common weather icon"
+      - name: record_source
+        description: "Record source identifier"
+      - name: load_dts
+        description: "Data load timestamp"

@@ -1,0 +1,126 @@
+version: 2
+
+models:
+  - name: stg_weather_observed_hourly
+    description: "Observed weather data with outlier handling"
+    columns:
+      - name: wmo_station_id
+        description: "WMO station identifier"
+        tests:
+          - not_null
+      - name: timestamp_utc
+        description: "Timestamp in UTC"
+        tests:
+          - not_null
+      - name: temperature
+        description: "Temperature in Celsius"
+      - name: precipitation
+        description: "Precipitation in mm"
+      - name: wind_speed
+        description: "Wind speed in m/s"
+      - name: wind_direction
+        description: "Wind direction in degrees"
+      - name: pressure_msl
+        description: "Pressure at mean sea level in hPa"
+      - name: relative_humidity
+        description: "Relative humidity percentage"
+      - name: cloud_cover
+        description: "Cloud cover percentage"
+      - name: visibility
+        description: "Visibility in meters"
+      - name: dew_point
+        description: "Dew point temperature in Celsius"
+      - name: solar
+        description: "Solar radiation"
+      - name: sunshine
+        description: "Sunshine duration in minutes"
+      - name: wind_gust_speed
+        description: "Wind gust speed in m/s"
+      - name: wind_gust_direction
+        description: "Wind gust direction in degrees"
+      - name: precipitation_probability
+        description: "Precipitation probability percentage"
+      - name: precipitation_probability_6h
+        description: "6-hour precipitation probability percentage"
+      - name: weather_condition
+        description: "Weather condition description"
+      - name: weather_icon
+        description: "Weather icon identifier"
+      - name: outlier_flag
+        description: "Flag indicating outlier detection"
+      - name: confidence_score
+        description: "Data quality confidence score (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: bright_sky_source_mapping
+        description: "Original BrightSky API source mapping"
+      - name: record_source
+        description: "Record source identifier"
+      - name: load_dts
+        description: "Data load timestamp"
+        tests:
+          - not_null
+
+  - name: stg_weather_forecast_hourly
+    description: "Forecast weather data with outlier handling"
+    columns:
+      - name: wmo_station_id
+        description: "WMO station identifier"
+        tests:
+          - not_null
+      - name: timestamp_utc
+        description: "Timestamp in UTC"
+        tests:
+          - not_null
+      - name: temperature
+        description: "Temperature in Celsius"
+      - name: precipitation
+        description: "Precipitation in mm"
+      - name: wind_speed
+        description: "Wind speed in m/s"
+      - name: wind_direction
+        description: "Wind direction in degrees"
+      - name: pressure_msl
+        description: "Pressure at mean sea level in hPa"
+      - name: relative_humidity
+        description: "Relative humidity percentage"
+      - name: cloud_cover
+        description: "Cloud cover percentage"
+      - name: visibility
+        description: "Visibility in meters"
+      - name: dew_point
+        description: "Dew point temperature in Celsius"
+      - name: solar
+        description: "Solar radiation"
+      - name: sunshine
+        description: "Sunshine duration in minutes"
+      - name: wind_gust_speed
+        description: "Wind gust speed in m/s"
+      - name: wind_gust_direction
+        description: "Wind gust direction in degrees"
+      - name: precipitation_probability
+        description: "Precipitation probability percentage"
+      - name: precipitation_probability_6h
+        description: "6-hour precipitation probability percentage"
+      - name: weather_condition
+        description: "Weather condition description"
+      - name: weather_icon
+        description: "Weather icon identifier"
+      - name: outlier_flag
+        description: "Flag indicating outlier detection"
+      - name: confidence_score
+        description: "Data quality confidence score (0-1)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: bright_sky_source_mapping
+        description: "Original BrightSky API source mapping"
+      - name: record_source
+        description: "Record source identifier"
+      - name: load_dts
+        description: "Data load timestamp"
+        tests:
+          - not_null
