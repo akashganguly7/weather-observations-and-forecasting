@@ -209,6 +209,33 @@ def run_dbt_mart_models():
         logger.error(f"Failed to run dbt mart models: {e}")
         raise
 
+def run_dbt_deps():
+    """Install dbt dependencies."""
+    logger.info("Installing dbt dependencies...")
+    try:
+        import subprocess
+        
+        result = subprocess.run(
+            ['dbt', 'deps'],
+            capture_output=True, 
+            text=True, 
+            cwd='/opt/airflow/project'
+        )
+        # Log the output for debugging
+        if result.stdout:
+            logger.info(f"dbt deps stdout: {result.stdout}")
+        if result.stderr:
+            logger.warning(f"dbt deps stderr: {result.stderr}")
+            
+        if result.returncode != 0:
+            raise Exception(f"dbt deps failed: {result.stderr}")
+        
+        logger.info("dbt dependencies installed successfully")
+        return "dbt deps completed"
+    except Exception as e:
+        logger.error(f"Failed to install dbt dependencies: {e}")
+        raise
+
 def run_dbt_tests():
     """Run dbt tests to validate data quality."""
     logger.info("Running dbt tests...")
@@ -242,6 +269,12 @@ def run_dbt_tests():
 task_get_scope = PythonOperator(
     task_id='get_station_scope',
     python_callable=get_station_scope,
+    dag=dag,
+)
+
+task_run_dbt_deps = PythonOperator(
+    task_id='run_dbt_deps',
+    python_callable=run_dbt_deps,
     dag=dag,
 )
 
@@ -293,7 +326,8 @@ task_run_dbt_tests = PythonOperator(
 
 # Define task dependencies
 task_get_scope >> [task_ingest_forecast_raw, task_ingest_observed_raw]
-[task_ingest_forecast_raw, task_ingest_observed_raw] >> staging_group
+[task_ingest_forecast_raw, task_ingest_observed_raw] >> task_run_dbt_deps
+task_run_dbt_deps >> staging_group
 staging_group >> dimension_group
 dimension_group >> fact_group
 fact_group >> mart_group
