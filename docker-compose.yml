@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: weather_postgis
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      retries: 5
+
+  ingestion:
+    build: .
+    container_name: weather_ingest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - .:/app  # mounts your local project folder for live code editing
+    command: python main.py
+
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    container_name: weather_dbt
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DBT_PROFILES_DIR=/usr/app/profiles
+    volumes:
+      - .:/usr/app
+    working_dir: /usr/app
+    command: ["sh", "-c", "dbt deps && dbt build"]
+
+  dbt-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    container_name: weather_dbt_test
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DBT_PROFILES_DIR=/usr/app/profiles
+    volumes:
+      - .:/usr/app
+    working_dir: /usr/app
+    command: ["sh", "-c", "dbt deps && dbt test"]
+
+volumes:
+  pgdata:

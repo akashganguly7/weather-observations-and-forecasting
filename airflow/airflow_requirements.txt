@@ -1,0 +1,15 @@
+requests>=2.32.0
+psycopg2-binary>=2.9.11
+SQLAlchemy>=1.4.28,<2.0
+geopandas>=1.1.1
+pandas>=2.3.3
+shapely>=2.1.2
+pyproj>=3.7.2
+Fiona>=1.10.1
+geoalchemy2>=0.18.0
+python-dotenv>=1.1.1
+backoff>=2.2.1
+topojson>=1.10
+brotli>=1.1.0
+dbt-core>=1.8.0
+dbt-postgres>=1.8.0

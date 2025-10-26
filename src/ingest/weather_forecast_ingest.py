@@ -1,0 +1,113 @@
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone, timedelta
+
+from psycopg2.extras import execute_values
+
+from utils.config import HTTP_CONCURRENCY, FORECAST_DAYS_BY
+from utils.db import get_psycopg_conn, ensure_postgis_extension, ensure_weather_forecast_schema, ensure_dq_schema
+from utils.config import RAW_SCHEMA
+from utils.logger import logger
+from utils.weather_utils import load_station_id_mapping, log_no_data_stations_batch, \
+    fetch_observations_for_station_timestamp, parse_and_prepare
+
+
+def upsert_observations_batch(values):
+    if not values:
+        return 0
+    conn = get_psycopg_conn()
+    cur = conn.cursor()
+    insert_sql = f"""
+    INSERT INTO {RAW_SCHEMA}.weather_hourly_forecast_raw
+      (wmo_station_id, timestamp_utc, raw, bright_sky_source_mapping, record_source)
+    VALUES %s;
+    """
+    execute_values(cur, insert_sql, values, page_size=500)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return len(values)
+
+def ingest_forecast_weather(wmo_station_ids, ):
+    """
+    Ingest forecast for given stations and timestamp.
+    """
+    # Ensure required schemas exist
+    ensure_postgis_extension()
+    ensure_weather_forecast_schema()
+    ensure_dq_schema()
+    
+    # Calculate timestamp_str_to by adding FORECAST_DAYS_BY days
+    try:
+        now = datetime.now(timezone.utc)  # current UTC time
+        from_dt = now.replace(minute=1, second=0, microsecond=0)  # start at HH:01:00
+        to_dt = from_dt + timedelta(days=FORECAST_DAYS_BY)  # add forecast days
+        # Format as strings
+        timestamp_str_from = from_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        timestamp_str_to = to_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    except Exception as e:
+        logger.error("Error calculating timestamp_str_to: %s", str(e))
+        return 0
+    
+    logger.info("Ingesting forecast for %s stations from %s to %s", len(wmo_station_ids), timestamp_str_from, timestamp_str_to)
+    
+    # Load station ID mapping into memory once for the specific stations
+    station_id_mapping = load_station_id_mapping(wmo_station_ids)
+    if not station_id_mapping:
+        logger.error("Failed to load station ID mapping, aborting ingestion")
+        return 0
+    
+    # Create batches for parallel processing
+    batch_size = max(1, len(wmo_station_ids) // HTTP_CONCURRENCY)
+    
+    # Create batches
+    batches = []
+    for i in range(0, len(wmo_station_ids), batch_size):
+        batch = wmo_station_ids[i:i + batch_size]
+        batches.append(batch)
+    
+    logger.info("Created %d batches of max size %d", len(batches), batch_size)
+    
+    def worker_batch(station_batch):
+        try:
+            total_count = 0
+            no_data_stations = []
+            try:
+                raw = fetch_observations_for_station_timestamp(station_batch, timestamp_str_from, timestamp_str_to)
+                if raw.get('_no_data'):
+                    # Collect no-data station info for batch logging
+                    no_data_stations.append(raw)
+                else:
+                    for wmo_station_id in station_batch:
+                        try:
+                            recs, no_data_info = parse_and_prepare(raw)
+
+                            if no_data_info:
+                                # Collect no-data station info for batch logging
+                                no_data_stations.append(no_data_info)
+                            else:
+                                count = upsert_observations_batch(recs)
+                                logger.info("Inserted %d observations for station %s", count, wmo_station_id)
+                                total_count += count
+
+                        except Exception as e:
+                            logger.exception("Error fetching obs for station %s: %s", wmo_station_id, e)
+                            continue
+            except Exception as e:
+                logger.exception("Error fetching observations for station batch %s: %s", station_batch, e)
+            # Log all no-data stations for this batch
+            if no_data_stations:
+                log_no_data_stations_batch(no_data_stations)
+            
+            return total_count
+        except Exception as e:
+            logger.exception("Error processing batch: %s", e)
+            return 0
+
+    total = 0
+    with ThreadPoolExecutor(max_workers=HTTP_CONCURRENCY) as ex:
+        batch_totals = list(ex.map(worker_batch, batches))
+        total = sum(batch_totals)
+    
+    logger.info("Inserted %d observation rows", total)
+    return total
+

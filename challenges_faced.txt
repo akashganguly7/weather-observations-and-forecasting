@@ -1,0 +1,2 @@
+1. it is asked to ingest weather data at a station level. it can be done in two ways, either get master data of all wmo ids and filter for germany or get all dwd ids from its master. it was easier and quicker to get hold of the wmo master station list and hence i am taking the wmo ids for this project.
+Moreover, after checking on the internet, it was confirmed that wmo is the international standard while dwd is for germany internally. both stand valid and hence i am convicned to go with wmo ids for germany only.

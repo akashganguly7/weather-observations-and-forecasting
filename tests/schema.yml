@@ -1,0 +1,5 @@
+version: 2
+
+# Test configuration for weather data models
+# This file defines test configurations and custom test parameters
+# Note: Model definitions should be in their respective schema.yml files

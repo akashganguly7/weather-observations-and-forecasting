@@ -1,0 +1,52 @@
+name: 'weather_observations_and_forecasting'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'weather_observations_and_forecasting'
+
+# These configurations specify where dbt should look for different types of files.
+# The `model-paths` config, for example, states that models in this project can be
+# found in the "models/" directory. You probably won't need to change these!
+model-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"  # directory which will store compiled SQL files
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+# Configuring models
+# Full documentation: https://docs.getdbt.com/reference/model-configs
+models:
+  weather_observations_and_forecasting:
+    # Staging models in staging schema
+    staging:
+      +materialized: view
+      +schema: "{{ env_var('STAGING_SCHEMA', 'staging') }}"
+    
+    # Dimension models in dimensions schema  
+    dimensions:
+      +materialized: table
+      +schema: "{{ env_var('DIMENSIONS_SCHEMA', 'dimensions') }}"
+    
+    # Fact models in fact schema
+    facts:
+      +materialized: table
+      +schema: "{{ env_var('FACT_SCHEMA', 'fact') }}"
+    
+    # Mart models in business_mart schema
+    marts:
+      +materialized: table
+      +schema: "{{ env_var('BUSINESS_MART_SCHEMA', 'business_mart') }}"
+
+# Test configurations
+data_tests:
+  weather_observations_and_forecasting:
+    # Custom test configurations
+    +severity: error  # Default severity for all tests
+    +store_failures: true  # Store test failures for debugging

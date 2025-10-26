@@ -1,0 +1,26 @@
+# Custom dbt Docker image
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV DBT_PROFILES_DIR=/usr/app/profiles
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    libpq-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dbt and postgres adapter
+RUN pip install --no-cache-dir \
+    dbt-core==1.8.0 \
+    dbt-postgres==1.8.0
+
+# Set working directory
+WORKDIR /usr/app
+
+# Default command
+CMD ["dbt", "--help"]
