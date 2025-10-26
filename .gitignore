@@ -213,7 +213,6 @@ Thumbs.db
 dbt_packages/
 target/
 logs/
-profiles.yml
 
 # Airflow specific
 airflow/logs/
