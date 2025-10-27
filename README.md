@@ -46,7 +46,7 @@ This project is a comprehensive weather data ingestion and processing system tha
 
 4. **Run the data pipeline**
    - In Airflow UI, find and trigger the `weather_onetime_setup` DAG first
-   - The `weather_hourly_ingestion` DAG will run automatically every hour
+   - The `weather_hourly_ingestion` DAG will run automatically every hour, trigger it manually to avoid waiting for the next run
 
 ### Available Commands
 
@@ -62,6 +62,26 @@ This project is a comprehensive weather data ingestion and processing system tha
 - The first DAG run may take several minutes as it downloads German postal area data (~12MB)
 - This is a one-time operation - subsequent runs will be much faster
 - The system automatically handles initialization and service dependencies
+
+### Cleanup and Fresh Start
+If you need to start completely fresh or encounter issues, you can clean up everything using the provided cleanup script:
+
+```bash
+./cleanup.sh
+```
+
+This script will:
+- Stop all running containers
+- Remove all containers, networks, and volumes
+- Clean up any temporary files and logs
+- Reset the system to a pristine state
+
+Alternatively, you can use the Make command:
+```bash
+make clean
+```
+
+**Note**: This will permanently delete all data, so only use it when you want to start from scratch.
 
 ## 3. Data Flow
 
@@ -94,20 +114,20 @@ graph TD
     end
     
     %% Dimensions Layer (Gold)
-    subgraph "🥇 DIMENSIONS LAYER (Gold)"
+    subgraph "DIMENSIONS LAYER (Gold)"
         K[dim_station]
         L[dim_postal_area]
     end
     
     %% Facts Layer (Gold)
-    subgraph "🥇 FACTS LAYER (Gold)"
+    subgraph "FACTS LAYER (Gold)"
         M[fact_link_postcode_station]
         N[fact_weather_observed_hourly]
         O[fact_weather_forecast_hourly]
     end
     
     %% Marts Layer (Gold)
-    subgraph "🥇 MARTS LAYER (Gold)"
+    subgraph "MARTS LAYER (Gold)"
         P[mart_weather_forecast_hourly_aggregated]
         Q[mart_weather_observed_hourly_aggregated]
     end
@@ -158,10 +178,11 @@ graph TD
    - Surrogate key generation
    - Proper indexing for performance
 
-4. **Facts (Gold Layer) - Currently in SCD Type 1**
+4. **Facts (Gold Layer) - Incremental hybrid SCD Type 1 and 2**
    - Spatial linking between postal areas and stations
    - Weather data enriched with dimension attributes
    - PostGIS distance calculations
+   - In SCD Type 2 tables valid_from and valid_to is not maintained. Just history is retained.
 
 5. **Marts (Gold Layer) - Currently in SCD Type 1**
    - Postal code level aggregations
@@ -370,7 +391,7 @@ erDiagram
         double_precision confidence_score
         text bright_sky_source_mapping
         text record_source
-        timestamp load_dts
+        timestamp load_dts PK
     }
     
     fact_weather_observed_hourly {
