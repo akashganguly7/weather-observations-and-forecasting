@@ -70,7 +70,7 @@ The system follows a modern data warehouse architecture with clear separation of
 ### Architecture Overview
 
 ```mermaid
-graph LR
+graph TD
     %% External Sources (Bronze)
     subgraph "🌐 SOURCES"
         A[BrightSky API]
