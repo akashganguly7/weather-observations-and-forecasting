@@ -4,16 +4,17 @@
 {{ config(
     materialized='table',
     indexes=[
-        {'columns': ['plz', 'timestamp_utc'], 'type': 'btree'},
         {'columns': ['wmo_station_id', 'timestamp_utc'], 'type': 'btree'},
         {'columns': ['timestamp_utc'], 'type': 'btree'}
-    ]
+    ],
+    unique_key=['wmo_station_id', 'timestamp_utc', 'load_dts'],
+    on_schema_change='append_new_columns'
 ) }}
 
 SELECT 
     sf.wmo_station_id,
     ds.id as station_id,
-    pa.plz,
+    lps.postal_area_id,
     sf.timestamp_utc,
     sf.temperature,
     sf.precipitation,

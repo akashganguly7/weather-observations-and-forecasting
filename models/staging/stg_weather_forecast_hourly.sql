@@ -3,7 +3,7 @@
 
 {{ config(
     materialized='incremental',
-    unique_key=['wmo_station_id', 'timestamp_utc'],
+    unique_key=['wmo_station_id', 'timestamp_utc', 'load_dts'],
     on_schema_change='append_new_columns'
 ) }}
 

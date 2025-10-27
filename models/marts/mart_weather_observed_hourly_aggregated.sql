@@ -112,9 +112,10 @@ SELECT
     
     -- Metadata
     'aggregated_matview' as record_source,
-    MAX(load_dts) as load_dts
+    MAX(fwo.load_dts) as load_dts
     
-FROM {{ ref('fact_weather_observed_hourly') }}
+FROM {{ ref('fact_weather_observed_hourly') }} fwo
+JOIN {{ ref('dim_postal_area') }} pa ON pa.id = postal_area_id
 WHERE temperature IS NOT NULL
 GROUP BY plz, timestamp_utc
 ORDER BY plz, timestamp_utc

@@ -135,8 +135,6 @@ graph TD
     K --> O
     L --> N
     L --> O
-    M --> N
-    M --> O
     
     O --> P
     N --> Q
@@ -172,7 +170,13 @@ graph TD
 
 ### Implementation Summary
 
-The system processes weather data through a comprehensive pipeline starting with API ingestion into the raw layer where data is stored as-is. The staging layer (curation layer) performs deduplication and data cleaning, including outlier detection for all weather properties. Outliers are replaced with null values and flagged for easy data quality filtering. The implementation focuses on Berlin weather stations to maintain manageable data volumes and fast pipeline execution. The data is modeled using a star schema with fact tables containing all required information, including both foreign keys and business keys to support both ML and analytical use cases. Finally, the data is aggregated by postal code on an hourly basis with pre-computed statistical summaries (min, max, avg) for all weather attributes to optimize ML workflow performance.
+The system processes weather data through a comprehensive pipeline starting with API ingestion into the raw layer where data is stored as-is. We are using the [BrightSky API](https://api.brightsky.dev/weather) that provides both observed and forecast hourly weather data. We fetch this data for Berlin WMO station IDs and then join it with station dimension and postal dimension to create weather data at a postcode level. This joining is done in FACTs and MARTs.
+
+**Key Data Handling Strategy:**
+- **Observed Weather**: Since observed weather is absolute truth, we keep only one row per postcode per hour in the facts table
+- **Forecast Weather**: Since forecasts can keep on changing, we keep all forecast records based on their ingestion time in facts and later aggregate them at a postcode level per hour in marts
+
+The staging layer (curation layer) performs deduplication and data cleaning, including outlier detection for all weather properties. Outliers are replaced with null values and flagged for easy data quality filtering. The implementation focuses on Berlin weather stations to maintain manageable data volumes and fast pipeline execution. The data is modeled using a star schema with fact tables containing all required information, including both foreign keys and business keys to support both ML and analytical use cases. Finally, the data is aggregated by postal code on an hourly basis with pre-computed statistical summaries (min, max, avg) for all weather attributes to optimize ML workflow performance.
 
 ### Orchestration
 - **Apache Airflow**: Manages the entire data pipeline
@@ -343,7 +347,7 @@ erDiagram
     fact_weather_forecast_hourly {
         varchar wmo_station_id PK,FK
         integer station_id PK,FK
-        varchar plz PK,FK
+        integer postal_area_id PK,FK
         timestamp timestamp_utc PK
         double_precision temperature
         double_precision precipitation
@@ -372,7 +376,7 @@ erDiagram
     fact_weather_observed_hourly {
         varchar wmo_station_id PK,FK
         integer station_id PK,FK
-        varchar plz PK,FK
+        integer postal_area_id PK,FK
         timestamp timestamp_utc PK
         double_precision temperature
         double_precision precipitation
@@ -538,10 +542,8 @@ erDiagram
     stg_weather_forecast_hourly ||--o{ fact_weather_forecast_hourly : "enriches_with_dimensions"
     dim_station ||--o{ fact_weather_observed_hourly : "provides_station_id"
     dim_station ||--o{ fact_weather_forecast_hourly : "provides_station_id"
-    fact_link_postcode_station ||--o{ fact_weather_observed_hourly : "provides_spatial_link"
-    fact_link_postcode_station ||--o{ fact_weather_forecast_hourly : "provides_spatial_link"
-    dim_postal_area ||--o{ fact_weather_observed_hourly : "provides_plz"
-    dim_postal_area ||--o{ fact_weather_forecast_hourly : "provides_plz"
+    dim_postal_area ||--o{ fact_weather_observed_hourly : "provides_postal_area_id"
+    dim_postal_area ||--o{ fact_weather_forecast_hourly : "provides_postal_area_id"
     
     %% Facts to Marts (dbt Transformations)
     fact_weather_forecast_hourly ||--o{ mart_weather_forecast_hourly_aggregated : "aggregates_to"
